@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL'),
+        'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+        'prompt' => env('GEMINI_PROMPT', 'vending_read_v1'),
+        'timeout' => env('GEMINI_TIMEOUT', 60),
+        'thinking_level' => env('GEMINI_THINKING_LEVEL', 'low'),
+    ],
+
 ];
