@@ -83,6 +83,7 @@
 
             <flux:dropdown position="top" align="end">
                 <flux:profile
+                    :name="auth()->user()->name"
                     :initials="auth()->user()->initials()"
                     icon-trailing="chevron-down"
                 />
