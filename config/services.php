@@ -41,7 +41,8 @@ return [
         'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
         'prompt' => env('GEMINI_PROMPT', 'vending_read_v1'),
         'timeout' => env('GEMINI_TIMEOUT', 60),
-        'thinking_level' => env('GEMINI_THINKING_LEVEL', 'low'),
+        'thinking_level' => env('GEMINI_THINKING_LEVEL'),
+        'retry_wait' => env('GEMINI_RETRY_WAIT', 10),
     ],
 
 ];
