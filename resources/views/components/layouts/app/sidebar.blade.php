@@ -14,7 +14,7 @@
             <flux:navlist variant="outline">
                 <flux:navlist.group heading="Platform" class="grid">
                     <flux:navlist.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>Dashboard</flux:navlist.item>
-                    <flux:navlist.item icon="map" href="/map">地図</flux:navlist.item>
+                    <flux:navlist.item icon="map" :href="route('map')" :current="request()->routeIs('map')" wire:navigate>地図</flux:navlist.item>
                     <flux:navlist.item icon="pencil-square" href="/posts/create" wire:navigate>投稿</flux:navlist.item>
                     <flux:navlist.item icon="magnifying-glass" href="/search" wire:navigate>検索</flux:navlist.item>
                     <flux:navlist.item icon="trophy" href="/ranking" wire:navigate>ランキング</flux:navlist.item>
