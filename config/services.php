@@ -45,4 +45,12 @@ return [
         'retry_wait' => env('GEMINI_RETRY_WAIT', 10),
     ],
 
+    'cloudflare' => [
+        'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+        'api_token' => env('CLOUDFLARE_API_TOKEN'),
+        'embedding_model' => env('CF_EMBEDDING_MODEL', '@cf/baai/bge-m3'),
+        'vectorize_index' => env('CF_VECTORIZE_INDEX', 'canmatch-products'),
+        'timeout' => env('CF_TIMEOUT', 30),
+    ],
+
 ];
