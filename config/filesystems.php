@@ -57,8 +57,24 @@ return [
             'throw' => false,
         ],
 
+        // Cloudflare R2
+        'r2' => [
+            'driver' => 's3',
+            'key' => env('R2_ACCESS_KEY_ID'),
+            'secret' => env('R2_SECRET_ACCESS_KEY'),
+            'region' => 'auto',
+            'bucket' => env('R2_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => false,
+        ],
+
     ],
 
+    'photos_disk' => env('PHOTOS_DISK', 'local'),
+    
     /*
     |--------------------------------------------------------------------------
     | Symbolic Links
