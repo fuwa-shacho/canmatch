@@ -18,8 +18,9 @@ class DatabaseSeeder extends Seeder
         foreach ($names as $i => $name) {
             User::factory()->create([
                 'name' => $name,
-                'email' => 'demo'.($i + 1).'@example.com',,
+                'email' => 'demo'.($i + 1).'@example.com',
                 'password' => bcrypt('password'),
-        ]);
+            ]);
+        }
     }
 }
