@@ -8,6 +8,10 @@
             <flux:sidebar.toggle class="lg:hidden" icon="x-mark" />
 
             <a href="{{ route('dashboard') }}" class="mr-5 flex items-center space-x-2" wire:navigate>
+                <flux:navlist.item icon="map" href="/map">地図</flux:navlist.item>
+                <flux:navlist.item icon="pencil-square" href="/posts/create" wire:navigate>投稿</flux:navlist.item>
+                <flux:navlist.item icon="magnifying-glass" href="/search" wire:navigate>検索</flux:navlist.item>    
+                <flux:navlist.item icon="trophy" href="/ranking" wire:navigate>ランキング</flux:navlist.item>
                 <x-app-logo class="size-8" href="#"></x-app-logo>
             </a>
 
