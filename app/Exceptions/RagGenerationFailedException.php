@@ -10,8 +10,6 @@ class RagGenerationFailedException extends RuntimeException
     /**
      * @param string $reason no_evidence / rate_limit / request_failed / timeout / invalid_response /
      *                       unsupported_citation(citations に根拠にない行がある)/
-     *                       unsupported_machine(モデルの文章に自販機の番号がある)/
-     *                       unsupported_price(モデルの文章に価格がある)
      */
     public function __construct(
         public readonly string $reason,
