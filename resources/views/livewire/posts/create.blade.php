@@ -14,7 +14,19 @@ new #[Layout('components.layouts.app')] class extends Component {
     #[Validate('required|string')]
     public string $maker = 'unknown';
 
+    #[Validate('required|numeric|between:-90,90')]
+    public ?float $latitude = null;
+
+    #[Validate('required|numeric|between:-180,180')]
+    public ?float $longitude = null;
+
     public bool $received = false;
+
+    public function setLocation(float $latitude, float $longitude): void
+    {
+        $this->latitude = $latitude;
+        $this->longitude = $longitude;
+    }
 
     public function save(): void
     {
@@ -71,14 +83,48 @@ new #[Layout('components.layouts.app')] class extends Component {
             <flux:select.option value="other">その他</flux:select.option>
         </flux:select>
 
+        <div
+            x-data="{ status: 'loading', message: '現在地を取得しています...' }"
+            x-init="
+                if (!navigator.geolocation) {
+                    status = 'error';
+                    message = 'この端末では位置情報が使えません';
+                } else {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                            status = 'ok';
+                            message = '現在地を取得しました';
+                            $wire.setLocation(pos.coords.latitude, pos.coords.longitude);
+                        },
+                        () => {
+                            status = 'error';
+                            message = '現在地を取得できませんでした。位置情報の許可を確認してください';
+                        },
+                        { enableHighAccuracy: true, timeout: 10000 }
+                    );
+                }
+            "
+        >
+            <input type="hidden" name="latitude" wire:model="latitude">
+            <input type="hidden" name="longitude" wire:model="longitude">
+            <p
+                x-text="message"
+                class="text-sm"
+                :class="status === 'error' ? 'text-red-500' : (status === 'ok' ? 'text-green-600' : 'text-zinc-500')"
+            ></p>
+        </div>
+
         <flux:button type="submit" variant="primary" class="w-full"
+            :disabled="$latitude === null || $longitude === null"
             wire:loading.attr="disabled" wire:target="save,photo">
             <span wire:loading.remove wire:target="save">送信する</span>
             <span wire:loading wire:target="save">送信中...</span>
         </flux:button>
 
         @if ($received)
-            <flux:text class="text-green-600">サーバーに届きました。</flux:text>
+            <flux:text class="text-green-600">
+                サーバーに届きました(緯度 {{ $latitude }}、経度 {{ $longitude }})
+            </flux:text>
         @endif
     </form>
 </section>
