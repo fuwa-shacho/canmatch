@@ -29,13 +29,32 @@ new #[Layout('components.layouts.app')] class extends Component {
     <flux:heading size="lg">写真を投稿する</flux:heading>
 
     <form wire:submit="save" class="mt-6 flex flex-col gap-6">
-        <div>
+        <div
+            x-data="{
+                uploading: false,
+                async resize(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+                    const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(bitmap.width * scale);
+                    canvas.height = Math.round(bitmap.height * scale);
+                    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+                    const resized = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+                    console.log('元:', file.size, '縮小後:', resized.size);
+                    this.uploading = true;
+                    $wire.upload('photo', resized, () => { this.uploading = false }, () => { this.uploading = false });
+                }
+            }"
+        >
             <flux:label>写真</flux:label>
             <input
                 type="file"
-                wire:model="photo"
                 accept="image/*"
                 capture="environment"
+                @change="resize($event)"
                 class="mt-2 block w-full text-sm"
             />
             @error('photo') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
