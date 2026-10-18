@@ -64,11 +64,6 @@ new #[Layout('components.layouts.app')] class extends Component {
 
             return;
         }
-        } catch (AiReadFailedException $e) {
-            $this->readError = $e->getMessage();
-
-            return;
-        }
 
         if (! $read['result']['is_vending_machine']) {
             $this->readError = '自動販売機が写っていないようです。撮り直してください。';
