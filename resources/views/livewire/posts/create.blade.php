@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
@@ -8,7 +9,7 @@ use Livewire\WithFileUploads;
 new #[Layout('components.layouts.app')] class extends Component {
     use WithFileUploads;
 
-    #[Validate('required|image')]
+    #[Validate('required|image|max:2048')]
     public $photo;
 
     #[Validate('required|string')]
@@ -21,6 +22,8 @@ new #[Layout('components.layouts.app')] class extends Component {
     public ?float $longitude = null;
 
     public bool $received = false;
+    public ?string $savedPath = null;
+    public ?string $previewUrl = null;
 
     public function setLocation(float $latitude, float $longitude): void
     {
@@ -28,11 +31,24 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->longitude = $longitude;
     }
 
+    protected function messages(): array
+    {
+        return [
+            'photo.required' => '写真を選んでください',
+            'photo.image' => '画像ファイルを選んでください',
+            'photo.max' => '写真は2MB以下にしてください',
+        ];
+    }
+
     public function save(): void
     {
         $this->validate();
 
-        // 保存は Issue 39 で実装する。ここでは受信できたことだけ確認する。
+        $disk = config('filesystems.photos_disk');
+
+        $this->savedPath = $this->photo->store('photos/'.now()->format('Y/m'), $disk);
+        $this->previewUrl = Storage::disk($disk)->temporaryUrl($this->savedPath, now()->addMinutes(10));
+
         $this->received = true;
     }
 }; ?>
@@ -99,7 +115,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                             status = 'error';
                             message = '現在地を取得できませんでした。位置情報の許可を確認してください';
                         },
-                        { enableHighAccuracy: true, timeout: 10000 }
+                        { enableHighAccuracy: true, timeout: 15000 }
                     );
                 }
             "
@@ -122,8 +138,9 @@ new #[Layout('components.layouts.app')] class extends Component {
 
         @if ($received)
             <flux:text class="text-green-600">
-                サーバーに届きました(緯度 {{ $latitude }}、経度 {{ $longitude }})
+                保存しました(保存先: {{ $savedPath }}、緯度 {{ $latitude }}、経度 {{ $longitude }})
             </flux:text>
+            <img src="{{ $previewUrl }}" alt="保存した写真" class="w-full rounded-lg">
         @endif
     </form>
 </section>
