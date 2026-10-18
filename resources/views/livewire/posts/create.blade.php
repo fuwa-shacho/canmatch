@@ -55,7 +55,6 @@ new #[Layout('components.layouts.app')] class extends Component {
                     canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
                     const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
                     const resized = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-                    console.log('元:', file.size, '縮小後:', resized.size);
                     this.uploading = true;
                     $wire.upload('photo', resized, () => { this.uploading = false }, () => { this.uploading = false });
                 }
