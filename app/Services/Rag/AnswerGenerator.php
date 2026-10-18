@@ -11,20 +11,22 @@ use Throwable;
 
 class AnswerGenerator
 {
+    /** 回答の1行目(サーバーが決める固定の前置き。モデルの文章は使わない) */
+    public const LEAD = '条件に合う商品は次のとおりです。';
+
     /** 条件に合う行が1つもないときの回答 */
     public const NO_MATCH = '登録されたデータからは条件に合う商品を確認できません。';
 
     /**
      * 質問と根拠から回答を作る
      *
-     * モデルには「選んだ理由の文章(summary)」と「紹介する根拠の行(citations)」だけを返させる。
-     * 自販機・価格を含む一覧はサーバーが根拠の行から組み立てるので、
+     * モデルには「紹介する根拠の行(citations)」だけを返させる。モデルの文章は使わない。
+     * 回答は、固定の前置きと、自販機・価格を含む一覧(サーバーが根拠の行から組み立てる)だけなので、
      * 回答に出てくる自販機と価格(とその組み合わせ)は、必ず根拠の行と一致する。
      *
      * @param  array<int, array{machine_id: int, product_id: int, price: int, product_name?: string, days_ago?: int}>  $evidence  64 で作る根拠の一覧
      * @return array{
      *     answer: string,
-     *     summary: string,
      *     citations: array<int, array{machine_id: int, product_id: int, price: int}>,
      *     machine_ids: int[],
      *     model: string,
@@ -56,27 +58,25 @@ class AnswerGenerator
             $this->fail($status === 429 ? 'rate_limit' : 'request_failed', "生成モデルがエラーを返しました(HTTP {$status})", $e, $e->response->body());
         }
 
-        // ② 応答からJSONを取り出す
+        // ② 応答からJSONを取り出す(使うのは citations だけ。モデルの文章は読まない)
         $raw = $response->json();
         $data = $this->extractJson($raw);
-        if (! is_array($data) || ! is_string($data['summary'] ?? null) || trim($data['summary']) === '') {
+        if (! is_array($data)) {
             $this->fail('invalid_response', '生成モデルの応答を読めませんでした', null, json_encode($raw, JSON_UNESCAPED_UNICODE));
         }
-        $summary = trim($data['summary']);
 
-        // ③ citations(回答に使った根拠の行)が、根拠の行と完全に一致するか
-        $citations = $this->validateCitations($data['citations'] ?? null, $evidence, $summary);
+        // ③ citations(選んだ根拠の行)が、根拠の行と完全に一致するか
+        $citations = $this->validateCitations(
+            $data['citations'] ?? null,
+            $evidence,
+            (string) json_encode($data['citations'] ?? null, JSON_UNESCAPED_UNICODE),
+        );
 
-        // ④ モデルが書いた文章に、自販機の番号と価格が入っていないか
-        //    (自販機と価格は⑤でサーバーが根拠の行から書くので、モデルの文章には一切書かせない)
-        $this->validateSummary($summary);
-
-        // ⑤ 回答の文章を組み立てる
-        $answer = $this->buildAnswer($summary, $citations, $evidence);
+        // ④ 回答は、固定の前置きと、選ばれた根拠の行だけからサーバーで組み立てる
+        $answer = $this->buildAnswer($citations, $evidence);
 
         return [
             'answer' => $answer,
-            'summary' => $summary,
             'citations' => $citations,
             'machine_ids' => array_values(array_unique(array_column($citations, 'machine_id'))),
             'model' => $c['generation_model'],
@@ -86,7 +86,8 @@ class AnswerGenerator
     }
 
     /**
-     * citations の各行が、根拠の一覧の行(自販機ID・商品ID・価格の組)と一致するか確かめ、型をそろえて返す
+     * citations の各行が、根拠の一覧の行(自販機ID・商品ID・価格の組)と一致するか確かめ、
+     * 型をそろえて、根拠の一覧の順(64 で価格の安い順にする)で返す
      *
      * @return array<int, array{machine_id: int, product_id: int, price: int}>
      */
@@ -127,32 +128,24 @@ class AnswerGenerator
             $result[$this->rowKey($row)] = $row; // 同じ行の重複は1つにまとめる
         }
 
-        return array_values($result);
+        // 根拠の一覧の順に並べ直す(AI が返した順ではなく、64 で決めた安い順にする)
+        $ordered = [];
+        foreach ($evidence as $evidenceRow) {
+            $key = $this->rowKey($evidenceRow);
+            if (isset($result[$key]) && ! isset($ordered[$key])) {
+                $ordered[$key] = $result[$key];
+            }
+        }
+
+        return array_values($ordered);
     }
 
     /**
-     * モデルが書いた文章(summary)に、自販機の番号と価格が書かれていないか確かめる
-     *
-     * 自販機と価格はサーバーが citations から書くので、summary に出てきた時点で失敗にする。
-     * 書き方(語順、全角数字、漢数字)に関係なく検出できるよう、「円」という文字そのものを禁止する。
-     */
-    private function validateSummary(string $summary): void
-    {
-        if (preg_match('/自販機\s*[0-9０-９]/u', $summary)) {
-            $this->fail('unsupported_machine', '生成モデルの文章に自販機の番号が含まれていました', null, $summary);
-        }
-
-        if (mb_strpos($summary, '円') !== false) {
-            $this->fail('unsupported_price', '生成モデルの文章に価格が含まれていました', null, $summary);
-        }
-    }
-
-    /**
-     * summary の後ろに、citations の行を「商品名:自販機○で△△円(情報の新しさ)」の形で並べる
+     * 固定の前置きの後ろに、citations の行を「・商品名:自販機○で△△円(情報の新しさ)」の形で並べる
      *
      * 自販機・商品名・価格・日数は、すべて根拠の行から取る(モデルの出力は使わない)。
      */
-    private function buildAnswer(string $summary, array $citations, array $evidence): string
+    private function buildAnswer(array $citations, array $evidence): string
     {
         if ($citations === []) {
             return self::NO_MATCH;
@@ -163,7 +156,7 @@ class AnswerGenerator
             $evidenceByKey[$this->rowKey($row)] = $row;
         }
 
-        $lines = [$summary];
+        $lines = [self::LEAD];
         foreach ($citations as $cite) {
             $row = $evidenceByKey[$this->rowKey($cite)];
             $name = $row['product_name'] ?? "商品{$row['product_id']}";

@@ -31,7 +31,8 @@ class AnswerGeneratorTest extends TestCase
         config()->set('services.cloudflare.json_mode', true);
     }
 
-    // gemma などの応答の形(choices)で、summary と citations を返させる
+    // gemma などの応答の形(choices)で、モデルが文章(summary)を付けて返してきた場合を再現する。
+    // 文章は回答に使われないことを、各テストで確かめる
     private function fakeAnswer(string $summary, array $citations, int $status = 200): void
     {
         $this->fakeChoices(json_encode(['summary' => $summary, 'citations' => $citations], JSON_UNESCAPED_UNICODE), $status);
@@ -50,11 +51,16 @@ class AnswerGeneratorTest extends TestCase
         return ['machine_id' => $machineId, 'product_id' => $productId, 'price' => $price];
     }
 
+    private function generate(?array $evidence = null): array
+    {
+        return app(AnswerGenerator::class)->generate('質問', $evidence ?? $this->evidence);
+    }
+
     // 生成を実行し、投げられた例外を受け取る
     private function failure(): RagGenerationFailedException
     {
         try {
-            app(AnswerGenerator::class)->generate('質問', $this->evidence);
+            $this->generate();
         } catch (RagGenerationFailedException $e) {
             return $e;
         }
@@ -62,111 +68,160 @@ class AnswerGeneratorTest extends TestCase
         $this->fail('RagGenerationFailedException が投げられなかった');
     }
 
-    // ---- 正しく答えられる場合 ----
+    // ---- 回答は根拠の行からサーバーが組み立てる ----
 
-    public function test_自販機と価格の一覧は根拠の行から組み立てる(): void
+    public function test_回答は固定の前置きと根拠の行から組み立てる(): void
     {
         $this->fakeAnswer(
             '甘くない炭酸なら、無糖のウィルキンソン タンサンがあります。',
             [$this->cite(1, 3, 120), $this->cite(3, 3, 130)],
         );
 
-        $r = app(AnswerGenerator::class)->generate('甘くない炭酸', $this->evidence);
+        $r = $this->generate();
 
         $this->assertSame(
-            "甘くない炭酸なら、無糖のウィルキンソン タンサンがあります。\n"
+            AnswerGenerator::LEAD . "\n"
             . "・ウィルキンソン タンサン:自販機1で120円(今日の情報)\n"
             . '・ウィルキンソン タンサン:自販機3で130円(3日前の情報)',
             $r['answer'],
         );
-        $this->assertSame('甘くない炭酸なら、無糖のウィルキンソン タンサンがあります。', $r['summary']);
         $this->assertSame([$this->cite(1, 3, 120), $this->cite(3, 3, 130)], $r['citations']);
         $this->assertSame([1, 3], $r['machine_ids']);
         $this->assertSame('@cf/test/model', $r['model']);
         $this->assertSame('rag_answer_v1', $r['prompt_version']);
+        $this->assertArrayNotHasKey('summary', $r);
     }
 
-    public function test_一覧はcitationsの順に並べ重複はまとめる(): void
+    public function test_回答の順番は根拠の一覧の順で重複はまとめる(): void
     {
+        // モデルが高い順・重複ありで返しても、根拠の一覧の順(安い順)に1回ずつ並べる
         $this->fakeAnswer(
             '炭酸の飲み物です。',
             [$this->cite(2, 2, 160), $this->cite(1, 3, 120), $this->cite(2, 2, 160)],
         );
 
-        $r = app(AnswerGenerator::class)->generate('炭酸', $this->evidence);
+        $r = $this->generate();
 
         $this->assertSame(
-            "炭酸の飲み物です。\n"
-            . "・コカ・コーラ:自販機2で160円(昨日の情報)\n"
-            . '・ウィルキンソン タンサン:自販機1で120円(今日の情報)',
+            AnswerGenerator::LEAD . "\n"
+            . "・ウィルキンソン タンサン:自販機1で120円(今日の情報)\n"
+            . '・コカ・コーラ:自販機2で160円(昨日の情報)',
             $r['answer'],
         );
-        $this->assertSame([2, 1], $r['machine_ids']);
+        $this->assertSame([1, 2], $r['machine_ids']);
     }
 
     public function test_日数や商品名がない根拠の行でも組み立てられる(): void
     {
-        $this->evidence = [['machine_id' => 5, 'product_id' => 8, 'price' => 100]];
+        $evidence = [['machine_id' => 5, 'product_id' => 8, 'price' => 100]];
         $this->fakeAnswer('お茶があります。', [$this->cite(5, 8, 100)]);
 
-        $r = app(AnswerGenerator::class)->generate('お茶', $this->evidence);
+        $r = $this->generate($evidence);
 
-        $this->assertSame("お茶があります。\n・商品8:自販機5で100円", $r['answer']);
-    }
-
-    public function test_番号のない自販機という言葉は書いてよい(): void
-    {
-        $this->fakeAnswer('近くの自販機で買える無糖の炭酸です。', [$this->cite(1, 3, 120)]);
-
-        $r = app(AnswerGenerator::class)->generate('甘くない炭酸', $this->evidence);
-
-        $this->assertStringStartsWith('近くの自販機で買える無糖の炭酸です。', $r['answer']);
+        $this->assertSame(AnswerGenerator::LEAD . "\n・商品8:自販機5で100円", $r['answer']);
     }
 
     public function test_該当なしなら決まった文を返し根拠の行は空(): void
     {
-        $this->fakeAnswer('登録されたデータからは条件に合う商品を確認できません', []);
+        $this->fakeAnswer('条件に合う商品はありませんでした。', []);
 
-        $r = app(AnswerGenerator::class)->generate('温かいお茶', $this->evidence);
+        $r = $this->generate();
 
         $this->assertSame(AnswerGenerator::NO_MATCH, $r['answer']);
         $this->assertSame([], $r['citations']);
         $this->assertSame([], $r['machine_ids']);
     }
 
+    public function test_文章がなくてもcitationsだけで答えられる(): void
+    {
+        $this->fakeChoices(json_encode(['citations' => [$this->cite(1, 3, 120)]], JSON_UNESCAPED_UNICODE));
+
+        $this->assertSame([1], $this->generate()['machine_ids']);
+    }
+
     public function test_response_の形の応答も読める(): void
     {
         Http::fake(['*' => Http::response(['result' => ['response' => json_encode([
-            'summary' => '炭酸です。',
             'citations' => [$this->cite(1, 3, 120)],
         ], JSON_UNESCAPED_UNICODE)]])]);
 
-        $r = app(AnswerGenerator::class)->generate('質問', $this->evidence);
-
-        $this->assertSame([1], $r['machine_ids']);
+        $this->assertSame([1], $this->generate()['machine_ids']);
     }
 
     public function test_JSONの前後に説明や囲みがあっても読める(): void
     {
         $this->fakeChoices("はい。\n```json\n" . json_encode([
-            'summary' => '炭酸です。',
             'citations' => [$this->cite(1, 3, 120)],
         ], JSON_UNESCAPED_UNICODE) . "\n```");
 
-        $r = app(AnswerGenerator::class)->generate('質問', $this->evidence);
+        $this->assertSame([1], $this->generate()['machine_ids']);
+    }
 
-        $this->assertSame('炭酸です。', $r['summary']);
+    // ---- モデルの文章は、どんな書き方でも回答に含めない ----
+
+    public function test_モデルが文章を返しても回答に含めない(): void
+    {
+        // レビューの指摘:根拠は自販機1だけなのに、「9番の自販機がおすすめです。」と書いてきた場合
+        $this->fakeChoices(json_encode([
+            'summary' => '9番の自販機がおすすめです。',
+            'answer' => '自販機9で999円です。',
+            'citations' => [$this->cite(1, 3, 120)],
+        ], JSON_UNESCAPED_UNICODE));
+
+        $r = $this->generate();
+
+        $this->assertSame(
+            AnswerGenerator::LEAD . "\n・ウィルキンソン タンサン:自販機1で120円(今日の情報)",
+            $r['answer'],
+        );
+        $this->assertStringNotContainsString('9番の自販機', $r['answer']);
+        $this->assertStringNotContainsString('999', $r['answer']);
+    }
+
+    public static function modelTexts(): array
+    {
+        return [
+            '価格→自販機の順で入れ替え(レビューの例)' => ['160円の商品は自販機1で買えます。120円の商品は自販機2で買えます。'],
+            '自販機→価格の順で入れ替え' => ['自販機1で160円、自販機2で120円です。'],
+            '番号を数字で書く' => ['9番の自販機がおすすめです。'],
+            '自販機と番号の間に語が入る' => ['自販機番号9がおすすめです。'],
+            '全角数字' => ['自販機１で１２０円です。'],
+            '漢数字' => ['九番の店で百二十円です。'],
+            '計算した価格' => ['2本なら240円です。'],
+            '台数' => ['3台で売られています。'],
+        ];
+    }
+
+    #[DataProvider('modelTexts')]
+    public function test_モデルがどんな文章を返しても回答は根拠の行だけになる(string $text): void
+    {
+        $this->fakeAnswer($text, [$this->cite(1, 3, 120), $this->cite(2, 2, 160)]);
+
+        $r = $this->generate();
+
+        $this->assertSame(
+            AnswerGenerator::LEAD . "\n"
+            . "・ウィルキンソン タンサン:自販機1で120円(今日の情報)\n"
+            . '・コカ・コーラ:自販機2で160円(昨日の情報)',
+            $r['answer'],
+        );
+    }
+
+    public function test_回答に含まれる自販機と価格はすべてcitationsの行だけ(): void
+    {
+        $this->fakeAnswer('九番の店がおすすめです。', [$this->cite(1, 3, 120), $this->cite(3, 3, 130)]);
+
+        $r = $this->generate();
+
+        preg_match_all('/自販機(\d+)/u', $r['answer'], $machines);
+        preg_match_all('/(\d+)円/u', $r['answer'], $prices);
+
+        $this->assertSame(['1', '3'], $machines[1]);
+        $this->assertSame(['120', '130'], $prices[1]);
+        $this->assertStringNotContainsString('九番', $r['answer']);
     }
 
     // ---- citations の検証 ----
-
-    public function test_summaryがなければ失敗にする(): void
-    {
-        // 以前の形(answer)で返してきた場合も、読めない応答として扱う
-        $this->fakeChoices('{"answer": "炭酸です。", "citations": []}');
-
-        $this->assertSame('invalid_response', $this->failure()->reason);
-    }
 
     public function test_citationsがなければ失敗にする(): void
     {
@@ -183,67 +238,18 @@ class AnswerGeneratorTest extends TestCase
         $this->assertSame('unsupported_citation', $this->failure()->reason);
     }
 
-    // ---- モデルの文章(summary)の検証 ----
-
-    public function test_自販機から価格の順で入れ替えた文章は失敗にする(): void
+    public function test_自販機と価格を入れ替えたcitationsは失敗にする(): void
     {
-        $this->fakeAnswer(
-            '自販機1で160円です。自販機2では120円です。',
-            [$this->cite(1, 3, 120), $this->cite(2, 2, 160)],
-        );
+        $this->fakeAnswer('炭酸です。', [$this->cite(1, 3, 160), $this->cite(2, 2, 120)]);
 
-        $this->assertSame('unsupported_machine', $this->failure()->reason);
+        $this->assertSame('unsupported_citation', $this->failure()->reason);
     }
 
-    public function test_価格から自販機の順で入れ替えた文章は失敗にする(): void
+    public function test_根拠にない自販機のcitationsは失敗にする(): void
     {
-        // 2回目のレビューで指摘された、価格が先に来る書き方
-        $this->fakeAnswer(
-            '160円の商品は自販機1で買えます。120円の商品は自販機2で買えます。',
-            [$this->cite(1, 3, 120), $this->cite(2, 2, 160)],
-        );
+        $this->fakeAnswer('炭酸です。', [$this->cite(9, 3, 120)]);
 
-        $this->assertSame('unsupported_machine', $this->failure()->reason);
-    }
-
-    public function test_文章に自販機の番号があれば失敗にする(): void
-    {
-        $this->fakeAnswer('自販機9にもあります。', [$this->cite(1, 3, 120)]);
-
-        $this->assertSame('unsupported_machine', $this->failure()->reason);
-    }
-
-    public function test_文章に全角の自販機番号があっても失敗にする(): void
-    {
-        $this->fakeAnswer('自販機１にあります。', [$this->cite(1, 3, 120)]);
-
-        $this->assertSame('unsupported_machine', $this->failure()->reason);
-    }
-
-    public function test_文章に価格があれば失敗にする(): void
-    {
-        // citations にある価格でも、文章には書かせない
-        $this->fakeAnswer('120円で買える無糖の炭酸です。', [$this->cite(1, 3, 120)]);
-
-        $this->assertSame('unsupported_price', $this->failure()->reason);
-    }
-
-    public static function summariesWithPrice(): array
-    {
-        return [
-            '計算した価格' => ['2本なら240円です。'],
-            '全角の数字' => ['１２０円です。'],
-            '漢数字' => ['百二十円です。'],
-            '数字と円の間に空白' => ['120 円です。'],
-        ];
-    }
-
-    #[DataProvider('summariesWithPrice')]
-    public function test_文章に書き方を変えた価格があっても失敗にする(string $summary): void
-    {
-        $this->fakeAnswer($summary, [$this->cite(1, 3, 120)]);
-
-        $this->assertSame('unsupported_price', $this->failure()->reason);
+        $this->assertSame('unsupported_citation', $this->failure()->reason);
     }
 
     // ---- その他の失敗 ----
@@ -268,7 +274,7 @@ class AnswerGeneratorTest extends TestCase
         Http::fake();
 
         try {
-            app(AnswerGenerator::class)->generate('質問', []);
+            $this->generate([]);
             $this->fail('例外が投げられなかった');
         } catch (RagGenerationFailedException $e) {
             $this->assertSame('no_evidence', $e->reason);
@@ -283,7 +289,7 @@ class AnswerGeneratorTest extends TestCase
     {
         $this->fakeAnswer('炭酸です。', [$this->cite(1, 3, 120)]);
 
-        app(AnswerGenerator::class)->generate('質問', $this->evidence);
+        $this->generate();
 
         Http::assertSent(fn ($r) => $r['chat_template_kwargs'] === ['enable_thinking' => false]
             && $r['response_format'] === ['type' => 'json_object']
@@ -298,7 +304,7 @@ class AnswerGeneratorTest extends TestCase
         config()->set('services.cloudflare.json_mode', 'false');
         $this->fakeAnswer('炭酸です。', [$this->cite(1, 3, 120)]);
 
-        app(AnswerGenerator::class)->generate('質問', $this->evidence);
+        $this->generate();
 
         Http::assertSent(fn ($r) => ! isset($r['chat_template_kwargs'])
             && ! isset($r['response_format']));
