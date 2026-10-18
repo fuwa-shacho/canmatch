@@ -11,12 +11,20 @@ use Throwable;
 
 class AnswerGenerator
 {
+    /** 条件に合う行が1つもないときの回答 */
+    public const NO_MATCH = '登録されたデータからは条件に合う商品を確認できません。';
+
     /**
      * 質問と根拠から回答を作る
      *
-     * @param  array<int, array{machine_id: int, product_id: int, price: int}>  $evidence  64 で作る根拠の一覧
+     * モデルには「選んだ理由の文章(summary)」と「紹介する根拠の行(citations)」だけを返させる。
+     * 自販機・価格を含む一覧はサーバーが根拠の行から組み立てるので、
+     * 回答に出てくる自販機と価格(とその組み合わせ)は、必ず根拠の行と一致する。
+     *
+     * @param  array<int, array{machine_id: int, product_id: int, price: int, product_name?: string, days_ago?: int}>  $evidence  64 で作る根拠の一覧
      * @return array{
      *     answer: string,
+     *     summary: string,
      *     citations: array<int, array{machine_id: int, product_id: int, price: int}>,
      *     machine_ids: int[],
      *     model: string,
@@ -51,19 +59,24 @@ class AnswerGenerator
         // ② 応答からJSONを取り出す
         $raw = $response->json();
         $data = $this->extractJson($raw);
-        if (! is_array($data) || ! is_string($data['answer'] ?? null) || trim($data['answer']) === '') {
+        if (! is_array($data) || ! is_string($data['summary'] ?? null) || trim($data['summary']) === '') {
             $this->fail('invalid_response', '生成モデルの応答を読めませんでした', null, json_encode($raw, JSON_UNESCAPED_UNICODE));
         }
-        $answer = trim($data['answer']);
+        $summary = trim($data['summary']);
 
         // ③ citations(回答に使った根拠の行)が、根拠の行と完全に一致するか
-        $citations = $this->validateCitations($data['citations'] ?? null, $evidence, $answer);
+        $citations = $this->validateCitations($data['citations'] ?? null, $evidence, $summary);
 
-        // ④ 本文の自販機・価格・その組み合わせが、citations と一致するか
-        $this->validateAnswerText($answer, $citations);
+        // ④ モデルが書いた文章に、自販機の番号と価格が入っていないか
+        //    (自販機と価格は⑤でサーバーが根拠の行から書くので、モデルの文章には一切書かせない)
+        $this->validateSummary($summary);
+
+        // ⑤ 回答の文章を組み立てる
+        $answer = $this->buildAnswer($summary, $citations, $evidence);
 
         return [
             'answer' => $answer,
+            'summary' => $summary,
             'citations' => $citations,
             'machine_ids' => array_values(array_unique(array_column($citations, 'machine_id'))),
             'model' => $c['generation_model'],
@@ -118,51 +131,64 @@ class AnswerGenerator
     }
 
     /**
-     * 本文に書かれた自販機・価格・その組み合わせが、すべて citations にあるか確かめる
+     * モデルが書いた文章(summary)に、自販機の番号と価格が書かれていないか確かめる
+     *
+     * 自販機と価格はサーバーが citations から書くので、summary に出てきた時点で失敗にする。
+     * 書き方(語順、全角数字、漢数字)に関係なく検出できるよう、「円」という文字そのものを禁止する。
      */
-    private function validateAnswerText(string $answer, array $citations): void
+    private function validateSummary(string $summary): void
     {
-        $citedMachines = array_column($citations, 'machine_id');
-        $citedPrices = array_column($citations, 'price');
-        $citedPairs = [];
-        foreach ($citations as $row) {
-            $citedPairs[$row['machine_id'] . '-' . $row['price']] = true;
+        if (preg_match('/自販機\s*[0-9０-９]/u', $summary)) {
+            $this->fail('unsupported_machine', '生成モデルの文章に自販機の番号が含まれていました', null, $summary);
         }
 
-        // 本文の「自販機○」
-        preg_match_all('/自販機\s*(\d+)/u', $answer, $m);
-        foreach ($m[1] as $id) {
-            if (! in_array((int) $id, $citedMachines, true)) {
-                $this->fail('unsupported_machine', "根拠にない自販機が回答に含まれていました(自販機{$id})", null, $answer);
-            }
+        if (mb_strpos($summary, '円') !== false) {
+            $this->fail('unsupported_price', '生成モデルの文章に価格が含まれていました', null, $summary);
+        }
+    }
+
+    /**
+     * summary の後ろに、citations の行を「商品名:自販機○で△△円(情報の新しさ)」の形で並べる
+     *
+     * 自販機・商品名・価格・日数は、すべて根拠の行から取る(モデルの出力は使わない)。
+     */
+    private function buildAnswer(string $summary, array $citations, array $evidence): string
+    {
+        if ($citations === []) {
+            return self::NO_MATCH;
         }
 
-        // 本文の「○○円」
-        preg_match_all('/(\d[\d,]*)\s*円/u', $answer, $m);
-        foreach ($m[1] as $price) {
-            if (! in_array($this->toInt($price), $citedPrices, true)) {
-                $this->fail('unsupported_price', "根拠にない価格が回答に含まれていました({$price}円)", null, $answer);
-            }
+        $evidenceByKey = [];
+        foreach ($evidence as $row) {
+            $evidenceByKey[$this->rowKey($row)] = $row;
         }
 
-        // 本文の「自販機○ … △△円」の組(同じ文の中で、間に別の「自販機」を挟まないもの)
-        preg_match_all('/自販機\s*(\d+)(?:(?!自販機)[^。])*?(\d[\d,]*)\s*円/u', $answer, $m, PREG_SET_ORDER);
-        foreach ($m as $match) {
-            $pair = (int) $match[1] . '-' . $this->toInt($match[2]);
-            if (! isset($citedPairs[$pair])) {
-                $this->fail('unsupported_combination', "根拠にない自販機と価格の組み合わせが回答に含まれていました(自販機{$match[1]}・{$match[2]}円)", null, $answer);
+        $lines = [$summary];
+        foreach ($citations as $cite) {
+            $row = $evidenceByKey[$this->rowKey($cite)];
+            $name = $row['product_name'] ?? "商品{$row['product_id']}";
+            $line = "・{$name}:自販機{$row['machine_id']}で{$row['price']}円";
+            if (isset($row['days_ago']) && is_numeric($row['days_ago'])) {
+                $line .= '(' . $this->freshness((int) $row['days_ago']) . ')';
             }
+            $lines[] = $line;
         }
+
+        return implode("\n", $lines);
+    }
+
+    private function freshness(int $daysAgo): string
+    {
+        return match (true) {
+            $daysAgo <= 0 => '今日の情報',
+            $daysAgo === 1 => '昨日の情報',
+            default => "{$daysAgo}日前の情報",
+        };
     }
 
     private function rowKey(array $row): string
     {
         return (int) ($row['machine_id'] ?? 0) . '-' . (int) ($row['product_id'] ?? 0) . '-' . (int) ($row['price'] ?? 0);
-    }
-
-    private function toInt(string $number): int
-    {
-        return (int) str_replace(',', '', $number);
     }
 
     /**
