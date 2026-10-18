@@ -8,7 +8,8 @@ use Throwable;
 class RagGenerationFailedException extends RuntimeException
 {
     /**
-     * @param string $reason no_evidence / rate_limit / request_failed / timeout / invalid_response / unsupported_price
+     * @param string $reason no_evidence / rate_limit / request_failed / timeout / invalid_response /
+     *                       unsupported_citation / unsupported_machine / unsupported_price / unsupported_combination
      */
     public function __construct(
         public readonly string $reason,
