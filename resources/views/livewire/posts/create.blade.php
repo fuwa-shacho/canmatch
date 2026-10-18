@@ -58,10 +58,12 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->previewUrl = Storage::disk($disk)->temporaryUrl($this->savedPath, now()->addMinutes(10));
 
         try {
-            $read = ['result' => ['is_vending_machine' => true, 'maker' => 'コカ・コーラ', 'products' => [
-                ['name' => '綾鷹', 'price' => 160, 'temperature' => 'cold'],
-                ['name' => 'ジョージア 微糖', 'price' => null, 'temperature' => 'hot'],
-            ]]];
+            $read = $reader->read($this->savedPath, $disk);
+        } catch (AiReadFailedException $e) {
+            $this->readError = $e->getMessage();
+
+            return;
+        }
         } catch (AiReadFailedException $e) {
             $this->readError = $e->getMessage();
 
