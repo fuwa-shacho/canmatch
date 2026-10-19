@@ -8,6 +8,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
+use Livewire\Attributes\Locked;
 
 new #[Layout('components.layouts.app')] class extends Component {
     use WithFileUploads;
@@ -25,7 +26,13 @@ new #[Layout('components.layouts.app')] class extends Component {
     public ?float $longitude = null;
 
     public string $step = 'form';
+    #[Locked]
     public ?string $savedPath = null;
+
+    #[Locked]
+    public array $aiMeta = [];
+
+    public ?string $notice = null;
     public ?string $previewUrl = null;
     public ?string $readError = null;
     public ?string $aiMaker = null;
@@ -50,6 +57,8 @@ new #[Layout('components.layouts.app')] class extends Component {
     public function save(VendingMachineReader $reader): void
     {
         $this->readError = null;
+        $this->notice = null;
+        $this->aiMeta = [];
         $this->validate();
 
         $disk = config('filesystems.photos_disk');
@@ -57,22 +66,28 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->savedPath = $this->photo->store('photos/'.now()->format('Y/m'), $disk);
         $this->previewUrl = Storage::disk($disk)->temporaryUrl($this->savedPath, now()->addMinutes(10));
 
+        $draft = ['is_vending_machine' => true, 'maker' => null, 'products' => []];
+
         try {
             $read = $reader->read($this->savedPath, $disk);
+            $draft = $read['result'];
+            $this->aiMeta = collect($read)
+                ->only(['raw', 'model', 'prompt_version', 'gateway_log_id'])
+                ->all();
         } catch (AiReadFailedException $e) {
-            $this->readError = $e->getMessage();
-
-            return;
+            $this->notice = $e->reason === 'rate_limit'
+                ? 'AIが混み合っています。少し時間をおいて撮り直すか、手入力で登録してください。'
+                : 'AIによる読み取りに失敗しました。手入力で登録してください。';
         }
 
-        if (! $read['result']['is_vending_machine']) {
+        if (! $draft['is_vending_machine']) {
             $this->readError = '自動販売機が写っていないようです。撮り直してください。';
 
             return;
         }
 
-        $this->aiMaker = $read['result']['maker'];
-        $this->rows = collect($read['result']['products'])
+        $this->aiMaker = $draft['maker'];
+        $this->rows = collect($draft['products'])
             ->map(fn ($p) => [
                 'id' => (string) Str::uuid(),
                 'name' => $p['name'] ?? '',
@@ -105,6 +120,8 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->step = 'form';
         $this->rows = [];
         $this->readError = null;
+        $this->notice = null;
+        $this->aiMeta = [];
         $this->registered = false;
     }
 
@@ -235,6 +252,9 @@ new #[Layout('components.layouts.app')] class extends Component {
 
             <div class="flex flex-col gap-4">
                 <flux:heading size="md">読み取り結果</flux:heading>
+                @if ($notice)
+                    <flux:text class="text-amber-600">{{ $notice }}</flux:text>
+                @endif
 
                 @error('rows') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
 
