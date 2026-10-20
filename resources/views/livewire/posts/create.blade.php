@@ -2,6 +2,7 @@
 
 use App\Exceptions\AiReadFailedException;
 use App\Services\ProductMatcher;
+use App\Services\VendingMachineRegistrar;
 use App\Services\VendingMachineReader;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -200,6 +201,10 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     public function register(): void
     {
+        if ($this->registered) {
+            return; // 二重送信の防止
+        }
+
         $this->validate([
             'rows' => 'required|array|min:1',
             'rows.*.name' => 'required|string|max:100',
@@ -218,8 +223,32 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.temperature.required' => '温冷を選んでください',
         ]);
 
-        // 自販機・商品・価格の保存は Issue 45 で実装する。
+        abort_if(
+            $this->savedPath === null || $this->latitude === null || $this->longitude === null,
+            422
+        );
+
+        try {
+            app(VendingMachineRegistrar::class)->register([
+                'latitude' => $this->latitude,
+                'longitude' => $this->longitude,
+                'maker' => $this->maker === 'unknown' ? null : $this->maker,
+                'photo_path' => $this->savedPath,
+                'user_id' => auth()->id(),
+            ], $this->rows);
+        } catch (\Illuminate\Database\QueryException $e) {
+            report($e);
+            $this->addError('rows', '保存に失敗しました。もう一度試してください。');
+
+            return;
+        }
+
         $this->registered = true;
+
+        session()->flash('status', '自販機を登録しました');
+
+        // 詳細ページができるまでの仮の遷移先。できたら machines.show などに差し替える
+        $this->redirectRoute('map', navigate: true);
     }
 }; ?>
 
@@ -377,9 +406,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                 </flux:button>
                 <flux:button variant="ghost" wire:click="backToForm">撮り直す</flux:button>
 
-                @if ($registered)
-                    <flux:text class="text-green-600">入力内容を確認しました(保存は #45 で実装します)。</flux:text>
-                @endif
+
             </div>
         </div>
     @endif
