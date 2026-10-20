@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DevelopmentDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -10,6 +11,16 @@ use Tests\TestCase;
 class DevelopmentDemoSeederTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_default_seeder_does_not_add_development_only_data(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+
+        $this->assertSame(0, DB::table('users')->where('email', 'like', 'demo%@example.com')->count());
+        $this->assertSame(0, DB::table('vending_machines')->where('photo_path', 'like', 'vending-machines/development/demo-%')->count());
+        $this->assertSame(0, DB::table('machine_products')->count());
+        $this->assertSame(0, DB::table('point_logs')->count());
+    }
 
     public function test_it_seeds_data_for_map_detail_search_and_ranking_development(): void
     {
