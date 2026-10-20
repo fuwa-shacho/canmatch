@@ -18,9 +18,9 @@
 ```bash
 ./vendor/bin/sail up -d
 ./vendor/bin/sail artisan migrate
-./vendor/bin/sail artisan db:seed
+./vendor/bin/sail artisan db:seed --class=ProductSeeder
 ./vendor/bin/sail artisan test
-./vendor/bin/sail pint --test
+./vendor/bin/sail pint --test --dirty
 ```
 
 フロントエンドを変更した場合は、次も確認します。
@@ -30,6 +30,7 @@
 ```
 
 - 変更した機能の専用テストを先に実行し、その後に全体テストを実行する。
+- Pintは変更したファイルだけを確認し、対象Issueと関係のない既存ファイルを整形しない。
 - MySQL固有のCHECK制約などは、SQLiteでスキップされた結果だけで完了扱いにしない。MySQL環境でも確認する。
 - GitHub Actionsのtestsとlinterが成功し、1人以上のレビューを受けてからマージする。
 
