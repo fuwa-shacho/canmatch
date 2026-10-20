@@ -65,4 +65,31 @@ class MapPageTest extends TestCase
             ->assertSee("document.addEventListener('livewire:navigating', destroyMap)", false)
             ->assertSee("document.addEventListener('livewire:navigated', initializeMap)", false);
     }
+
+    public function test_vending_machine_markers_are_loaded_from_the_api_with_safe_popup_content(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/map')
+            ->assertOk()
+            ->assertSee("fetch('/api/vending-machines'", false)
+            ->assertSee('L.marker([latitude, longitude])', false)
+            ->assertSee("maker.textContent = machine.maker || 'メーカー不明'", false)
+            ->assertSee('productCount.textContent = `商品数: ${machine.product_count}件`', false)
+            ->assertSee('detailLink.href = `/vending-machines/${encodeURIComponent(machine.id)}`', false)
+            ->assertSee('content.append(maker, productCount, detailLink)', false);
+    }
+
+    public function test_marker_request_is_cancelled_when_leaving_the_map(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/map')
+            ->assertOk()
+            ->assertSee('markerRequest?.abort()', false)
+            ->assertSee('map !== requestedMap', false)
+            ->assertSee('requestedMap.getContainer().isConnected', false);
+    }
 }
