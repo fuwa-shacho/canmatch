@@ -55,4 +55,22 @@ class PostConfirmMatchTest extends TestCase
             ->assertSet('rows.0.link', 'new')
             ->assertSet('rows.0.volume_ml', null);
     }
+
+    public function test_更新モードでは既存の座標を使い現在地で上書きしない(): void
+    {
+        $machine = \App\Models\VendingMachine::create([
+            'latitude' => 33.5902,
+            'longitude' => 130.4017,
+            'maker' => 'itoen',
+            'photo_path' => 'photos/test.jpg',
+            'last_confirmed_at' => now(),
+        ]);
+
+        Volt::test('posts.create', ['machine' => $machine->id])
+            ->assertSet('machineId', $machine->id)
+            ->assertSet('latitude', 33.5902)
+            ->assertSet('maker', 'itoen')
+            ->call('setLocation', 35.0, 139.0)
+            ->assertSet('latitude', 33.5902);
+    }
 }

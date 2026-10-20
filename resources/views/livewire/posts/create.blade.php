@@ -11,6 +11,7 @@ use Livewire\Attributes\Locked;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
+use App\Models\VendingMachine;
 
 new #[Layout('components.layouts.app')] class extends Component {
     use WithFileUploads;
@@ -33,6 +34,9 @@ new #[Layout('components.layouts.app')] class extends Component {
     public ?string $savedPath = null;
 
     #[Locked]
+    public ?int $machineId = null;
+
+    #[Locked]
     public array $aiMeta = [];
 
     public ?string $notice = null;
@@ -42,8 +46,27 @@ new #[Layout('components.layouts.app')] class extends Component {
     public array $rows = [];
     public bool $registered = false;
 
+    public function mount(?int $machine = null): void
+    {
+        $id = $machine ?? request()->integer('machine');
+
+        if ($id > 0) {
+            $existing = VendingMachine::findOrFail($id);
+
+            $this->machineId = $existing->id;
+            $this->latitude = (float) $existing->latitude;
+            $this->longitude = (float) $existing->longitude;
+            $this->maker = $existing->maker ?? 'unknown';
+        }
+    }
+
     public function setLocation(float $latitude, float $longitude): void
     {
+        // 更新モードでは、既存の自販機の座標を現在地で上書きしない
+        if ($this->machineId !== null) {
+            return;
+        }
+
         $this->latitude = $latitude;
         $this->longitude = $longitude;
     }
@@ -223,38 +246,38 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.temperature.required' => '温冷を選んでください',
         ]);
 
-        abort_if(
-            $this->savedPath === null || $this->latitude === null || $this->longitude === null,
-            422
-        );
+            abort_if($this->savedPath === null || $this->latitude === null || $this->longitude === null, 422);
 
-        try {
-            app(VendingMachineRegistrar::class)->register([
-                'latitude' => $this->latitude,
-                'longitude' => $this->longitude,
-                'maker' => $this->maker === 'unknown' ? null : $this->maker,
-                'photo_path' => $this->savedPath,
-                'user_id' => auth()->id(),
-            ], $this->rows);
-        } catch (\Illuminate\Database\QueryException $e) {
-            report($e);
-            $this->addError('rows', '保存に失敗しました。もう一度試してください。');
+            $machine = null;
 
-            return;
+            try {
+                $registrar = app(VendingMachineRegistrar::class);
+
+                $machine = $this->machineId !== null
+                    ? $registrar->update(VendingMachine::findOrFail($this->machineId), $this->rows, $this->savedPath)
+                    : $registrar->register([
+                        'latitude' => $this->latitude,
+                        'longitude' => $this->longitude,
+                        'maker' => $this->maker === 'unknown' ? null : $this->maker,
+                        'photo_path' => $this->savedPath,
+                        'user_id' => auth()->id(),
+                    ], $this->rows);
+            } catch (\Illuminate\Database\QueryException $e) {
+                report($e);
+                $this->addError('rows', '保存に失敗しました。もう一度試してください。');
+
+                return;
+            }
+
+            $this->registered = true;
+
+            $this->redirectRoute('vending-machines.show', $machine, navigate: true);
         }
-
-        $this->registered = true;
-
-        session()->flash('status', '自販機を登録しました');
-
-        // 詳細ページができるまでの仮の遷移先。できたら machines.show などに差し替える
-        $this->redirectRoute('map', navigate: true);
-    }
 }; ?>
 
 <section class="mx-auto w-full max-w-3xl p-4">
     @if ($step === 'form')
-        <flux:heading size="lg">写真を投稿する</flux:heading>
+        <flux:heading size="lg">{{ $machineId ? '情報を更新する' : '写真を投稿する' }}</flux:heading>
 
         <form wire:submit="save" class="mt-6 flex max-w-md flex-col gap-6">
             <div
@@ -286,7 +309,9 @@ new #[Layout('components.layouts.app')] class extends Component {
                 />
                 @error('photo') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
             </div>
+        
 
+        @unless ($machineId)
             <flux:select wire:model="maker" label="メーカー">
                 <flux:select.option value="unknown">不明</flux:select.option>
                 <flux:select.option value="dydo">ダイドードリンコ</flux:select.option>
@@ -328,6 +353,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                     :class="status === 'error' ? 'text-red-500' : (status === 'ok' ? 'text-green-600' : 'text-zinc-500')"
                 ></p>
             </div>
+        @endunless
 
             <flux:button type="submit" variant="primary" class="w-full"
                 :disabled="$latitude === null || $longitude === null"
