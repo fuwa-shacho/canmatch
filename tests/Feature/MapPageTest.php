@@ -96,6 +96,21 @@ class MapPageTest extends TestCase
             ->assertSee('商品名の一部で検索');
     }
 
+    public function test_search_results_are_sorted_by_price_and_show_lowest_price_and_freshness(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/map')
+            ->assertOk()
+            ->assertSee('left.product.price - right.product.price', false)
+            ->assertSee("badge.textContent = '最安'", false)
+            ->assertSee('product.days_ago >= 30', false)
+            ->assertSee('${product.days_ago}日前の情報', false)
+            ->assertSee("hot: '温'", false)
+            ->assertSee("cold: '冷'", false);
+    }
+
     public function test_marker_request_is_cancelled_when_leaving_the_map(): void
     {
         $user = User::factory()->create();
