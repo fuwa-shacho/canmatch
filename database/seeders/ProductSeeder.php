@@ -53,7 +53,7 @@ class ProductSeeder extends Seeder
             ['name' => 'ワンダ モーニングアメリカーノ ブラック', 'maker' => 'アサヒ飲料', 'volume_ml' => 500, 'category' => 'コーヒー', 'description' => '無糖のブラックコーヒー。甘くない。カフェインあり'],
             ['name' => 'ワンダ モーニングアメリカーノ ラテ', 'maker' => 'アサヒ飲料', 'volume_ml' => 500, 'category' => 'コーヒー', 'description' => '甘いミルク入りコーヒー。加糖。カフェインあり'],
             ['name' => 'ワンダ モーニングショット', 'maker' => 'アサヒ飲料', 'volume_ml' => 185, 'category' => 'コーヒー', 'description' => '甘い缶コーヒー。ミルク入り。カフェインあり'],
-                        ['name' => 'ワンダ 金の微糖', 'maker' => 'アサヒ飲料', 'volume_ml' => 185, 'category' => 'コーヒー', 'description' => '微糖の缶コーヒー。甘さ控えめ。ミルク入り。甘味料使用。カフェインあり'],
+            ['name' => 'ワンダ 金の微糖', 'maker' => 'アサヒ飲料', 'volume_ml' => 185, 'category' => 'コーヒー', 'description' => '微糖の缶コーヒー。甘さ控えめ。ミルク入り。甘味料使用。カフェインあり'],
             ['name' => 'ワンダ ブラック ザ アロマ', 'maker' => 'アサヒ飲料', 'volume_ml' => 185, 'category' => 'コーヒー', 'description' => '無糖のブラック缶コーヒー。甘くない。カフェインあり'],
             ['name' => 'ワンダ 特製カフェオレ', 'maker' => 'アサヒ飲料', 'volume_ml' => 185, 'category' => 'コーヒー', 'description' => '甘いカフェオレ。ミルク入り。カフェインあり'],
             ['name' => 'ワンダ プレミアムゼロ', 'maker' => 'アサヒ飲料', 'volume_ml' => 185, 'category' => 'コーヒー', 'description' => 'ミルク入りの缶コーヒー。砂糖不使用。甘味料で甘い。糖類ゼロ。カフェインあり'],
