@@ -73,12 +73,27 @@ class MapPageTest extends TestCase
         $this->actingAs($user)
             ->get('/map')
             ->assertOk()
-            ->assertSee("fetch('/api/vending-machines'", false)
+            ->assertSee("'/api/vending-machines'", false)
             ->assertSee('L.marker([latitude, longitude])', false)
             ->assertSee("maker.textContent = machine.maker || 'メーカー不明'", false)
             ->assertSee('productCount.textContent = `商品数: ${machine.product_count}件`', false)
             ->assertSee('detailLink.href = `/vending-machines/${encodeURIComponent(machine.id)}`', false)
             ->assertSee('content.append(maker, productCount, detailLink)', false);
+    }
+
+    public function test_product_search_updates_the_result_list_and_map_markers(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/map')
+            ->assertOk()
+            ->assertSee('id="product-search-form"', false)
+            ->assertSee('name="product_name"', false)
+            ->assertSee("parameters.set('product_name', productName)", false)
+            ->assertSee('markerLayer?.clearLayers()', false)
+            ->assertSee('renderSearchResults(machines, productName)', false)
+            ->assertSee('商品名の一部で検索');
     }
 
     public function test_marker_request_is_cancelled_when_leaving_the_map(): void

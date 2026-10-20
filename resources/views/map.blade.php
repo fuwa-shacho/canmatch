@@ -2,6 +2,29 @@
 <x-layouts.app>
     <div class="flex flex-col gap-4">
         <h1 class="text-2xl font-bold">自販機マップ</h1>
+        <form id="product-search-form" class="flex flex-col gap-2 sm:flex-row" role="search">
+            <label for="product-search" class="sr-only">商品名</label>
+            <input
+                id="product-search"
+                name="product_name"
+                type="search"
+                maxlength="100"
+                placeholder="商品名の一部で検索"
+                class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-neutral-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+            >
+            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
+                検索
+            </button>
+            <button
+                id="product-search-reset"
+                type="button"
+                class="rounded-lg border border-neutral-300 px-4 py-2 font-semibold dark:border-neutral-600"
+            >
+                リセット
+            </button>
+        </form>
+        <p id="search-summary" role="status" aria-live="polite" class="text-sm text-neutral-600 dark:text-neutral-300"></p>
+        <ul id="search-results" class="grid gap-2 sm:grid-cols-2"></ul>
         <p
             id="location-message"
             role="status"
@@ -32,6 +55,7 @@
     <script data-navigate-once>
         (() => {
             let map = null;
+            let markerLayer = null;
             let markerRequest = null;
             const academy = [33.589, 130.395];
 
@@ -45,6 +69,7 @@
 
                 map.remove();
                 map = null;
+                markerLayer = null;
             };
 
             const createPopupContent = (machine) => {
@@ -63,15 +88,56 @@
                 return content;
             };
 
-            const loadVendingMachineMarkers = async (requestedMap) => {
+            const renderSearchResults = (machines, productName) => {
+                const summary = document.getElementById('search-summary');
+                const results = document.getElementById('search-results');
+
+                if (!summary || !results) {
+                    return;
+                }
+
+                results.replaceChildren();
+
+                if (!productName) {
+                    summary.textContent = '';
+                    return;
+                }
+
+                summary.textContent = machines.length > 0
+                    ? `「${productName}」を扱う自販機: ${machines.length}件`
+                    : `「${productName}」を扱う自販機は見つかりませんでした。`;
+
+                for (const machine of machines) {
+                    const item = document.createElement('li');
+                    const link = document.createElement('a');
+
+                    item.className = 'rounded-lg border border-neutral-200 p-3 dark:border-neutral-700';
+                    link.href = `/vending-machines/${encodeURIComponent(machine.id)}`;
+                    link.textContent = `${machine.maker || 'メーカー不明'}（商品数: ${machine.product_count}件）`;
+                    link.className = 'font-semibold text-blue-700 hover:underline dark:text-blue-300';
+                    item.append(link);
+                    results.append(item);
+                }
+            };
+
+            const loadVendingMachineMarkers = async (requestedMap, productName = '') => {
                 const message = document.getElementById('map-message');
                 const request = new AbortController();
+                const parameters = new URLSearchParams();
+
+                if (productName) {
+                    parameters.set('product_name', productName);
+                }
+
+                const endpoint = parameters.size > 0
+                    ? `/api/vending-machines?${parameters.toString()}`
+                    : '/api/vending-machines';
 
                 markerRequest?.abort();
                 markerRequest = request;
 
                 try {
-                    const response = await fetch('/api/vending-machines', {
+                    const response = await fetch(endpoint, {
                         headers: { Accept: 'application/json' },
                         signal: request.signal
                     });
@@ -93,6 +159,8 @@
                         return;
                     }
 
+                    markerLayer?.clearLayers();
+
                     for (const machine of machines) {
                         const latitude = Number(machine.latitude);
                         const longitude = Number(machine.longitude);
@@ -103,9 +171,10 @@
 
                         L.marker([latitude, longitude])
                             .bindPopup(createPopupContent(machine))
-                            .addTo(requestedMap);
+                            .addTo(markerLayer);
                     }
 
+                    renderSearchResults(machines, productName);
                     message?.classList.add('hidden');
                 } catch (error) {
                     if (error.name === 'AbortError') {
@@ -152,6 +221,7 @@
 
                 destroyMap();
                 map = L.map(container).setView(academy, 16);
+                markerLayer = L.layerGroup().addTo(map);
 
                 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
@@ -252,6 +322,23 @@
 
                 locationControl.addTo(map);
                 loadVendingMachineMarkers(map);
+
+                const searchForm = document.getElementById('product-search-form');
+                const searchInput = document.getElementById('product-search');
+                const resetButton = document.getElementById('product-search-reset');
+
+                searchForm?.addEventListener('submit', (event) => {
+                    event.preventDefault();
+                    loadVendingMachineMarkers(map, searchInput?.value.trim() ?? '');
+                });
+
+                resetButton?.addEventListener('click', () => {
+                    if (searchInput) {
+                        searchInput.value = '';
+                    }
+
+                    loadVendingMachineMarkers(map);
+                });
             };
 
             document.addEventListener('livewire:navigating', destroyMap);
