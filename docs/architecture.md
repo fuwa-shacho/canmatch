@@ -52,7 +52,7 @@ RAG の埋め込み・検索部分は Cloudflare の API を利用する構成�
 写真の保存先として R2 を使える構成が確認できます。
 
 - `config/filesystems.php` に `r2` ディスクが定義されている。
-- `PHOTOS_DISK` で `local` と `r2` を切り替える設���になっている。
+- `PHOTOS_DISK` で `local` と `r2` を切り替える設定になっている。
 - 実装済みのコードは `Storage::disk(...)` を利用する方式で、R2 への保存・読み取りに対応している。
 - ただし `temporaryUrl()` を使った画面表示の実装はこの時点では確認できない。
 
@@ -164,6 +164,7 @@ RAG の根拠行の詳細は [RAG詳細設計](rag-design.md) にある。
 - `invalid_response`
 - `unsupported_citation`
 - `rate_limit`
+- `timeout`
 - `request_failed`
 
 ### フォールバック方針
