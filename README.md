@@ -2,6 +2,75 @@
 
 街の商品発見・情報検証プラットフォーム
 
+## 開発環境の起動
+
+開発環境にはLaravel Sail（Docker）を使用します。WindowsではDocker DesktopとWSL2を用意し、リポジトリはWSLのホームディレクトリ配下へcloneしてください。Cドライブを`/mnt/c`経由で使う配置は、ファイルアクセスが遅くなるため避けます。
+
+### 初回セットアップ
+
+リポジトリをcloneしたディレクトリで、次の順に実行します。
+
+```bash
+cp .env.example .env
+```
+
+Issue #14で`.env.example`のMySQL設定を統一するまでは、作成した`.env`のDB設定を次の値へ変更します。
+
+```dotenv
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=laravel
+DB_USERNAME=sail
+DB_PASSWORD=password
+```
+
+設定後、次を実行します。
+
+```bash
+docker run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "$(pwd):/var/www/html" \
+    -w /var/www/html \
+    laravelsail/php85-composer:latest \
+    composer install --ignore-platform-reqs
+
+./vendor/bin/sail up -d
+./vendor/bin/sail artisan key:generate
+./vendor/bin/sail artisan migrate
+./vendor/bin/sail artisan db:seed --class=ProductSeeder
+./vendor/bin/sail npm install
+./vendor/bin/sail npm run dev
+```
+
+`sail npm run dev`は開発中、そのまま起動しておきます。別のターミナルで次を確認してください。
+
+- アプリ: <http://localhost>
+- phpMyAdmin: <http://localhost:8080>
+
+phpMyAdminには`.env`の`DB_USERNAME`と`DB_PASSWORD`でログインします。APIキーなどの秘密情報を設定した`.env`はコミットしません。
+
+### 2回目以降
+
+```bash
+./vendor/bin/sail up -d
+./vendor/bin/sail npm run dev
+```
+
+終了するときは、開発サーバーを`Ctrl+C`で止めてから次を実行します。
+
+```bash
+./vendor/bin/sail down
+```
+
+依存パッケージやマイグレーションが追加された場合は、必要に応じて次も実行します。
+
+```bash
+./vendor/bin/sail composer install
+./vendor/bin/sail npm install
+./vendor/bin/sail artisan migrate
+```
+
 ## 開発ルール
 
 ### ブランチ
