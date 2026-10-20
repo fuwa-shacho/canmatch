@@ -15,6 +15,7 @@ class DevelopmentDemoSeeder extends Seeder
 {
     /**
      * Seed development-only data for the map, detail, search, and ranking screens.
+     * Coordinates are centered around G's Fukuoka, but every vending machine is fictitious.
      */
     public function run(): void
     {
