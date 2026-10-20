@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\AiReadFailedException;
+use App\Services\ProductMatcher;
 use App\Services\VendingMachineReader;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -30,6 +31,7 @@ new #[Layout('components.layouts.app')] class extends Component {
     public ?float $longitude = null;
 
     public string $step = 'form';
+
     #[Locked]
     public ?string $savedPath = null;
 
@@ -106,12 +108,11 @@ new #[Layout('components.layouts.app')] class extends Component {
 
         $this->aiMaker = $draft['maker'];
         $this->rows = collect($draft['products'])
-            ->map(fn ($p) => [
-                'id' => (string) Str::uuid(),
+            ->map(fn ($p) => $this->newRow([
                 'name' => $p['name'] ?? '',
                 'price' => $p['price'],
                 'temperature' => $p['temperature'],
-            ])
+            ]))
             ->values()
             ->all();
 
@@ -124,7 +125,79 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     public function addRow(): void
     {
-        $this->rows[] = ['id' => (string) Str::uuid(), 'name' => '', 'price' => null, 'temperature' => null];
+        $this->rows[] = $this->newRow();
+    }
+
+    protected function newRow(array $attrs = []): array
+    {
+        $row = array_merge([
+            'id' => (string) Str::uuid(),
+            'name' => '',
+            'price' => null,
+            'temperature' => null,
+        ], $attrs);
+
+        return array_merge($row, $this->matchFor((string) $row['name']));
+    }
+
+    protected function matchFor(string $name): array
+    {
+        $result = app(ProductMatcher::class)->match($name);
+        $product = $result['product'];
+
+        return [
+            'product_id' => $product?->id,
+            'product_name' => $product?->name,
+            'volume_ml' => $product?->volume_ml,
+            'link' => $product ? 'auto' : 'new', // auto | manual | new
+            'candidates' => $result['candidates']->map(fn ($c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'volume_ml' => $c->volume_ml,
+            ])->all(),
+        ];
+    }
+
+    // 商品名を直したら照合し直す(紐づけは名前に対するものなので、手動選択もリセットされる)
+    public function updatedRows($value, string $key): void
+    {
+        [$index, $field] = array_pad(explode('.', $key, 2), 2, null);
+
+        if ($field !== 'name' || ! isset($this->rows[$index])) {
+            return;
+        }
+
+        $this->rows[$index] = array_merge(
+            $this->rows[$index],
+            $this->matchFor((string) $this->rows[$index]['name']),
+        );
+    }
+
+    public function selectCandidate(int $index, int $productId): void
+    {
+        $candidate = collect($this->rows[$index]['candidates'] ?? [])->firstWhere('id', $productId);
+
+        // クライアントから来たIDを信用せず、サーバーが出した候補の中にあるものだけ受け付ける
+        if ($candidate === null) {
+            return;
+        }
+
+        $this->rows[$index]['product_id'] = $candidate['id'];
+        $this->rows[$index]['product_name'] = $candidate['name'];
+        $this->rows[$index]['volume_ml'] = $candidate['volume_ml'];
+        $this->rows[$index]['link'] = 'manual';
+    }
+
+    public function unlinkProduct(int $index): void
+    {
+        if (! isset($this->rows[$index])) {
+            return;
+        }
+
+        $this->rows[$index]['product_id'] = null;
+        $this->rows[$index]['product_name'] = null;
+        $this->rows[$index]['volume_ml'] = null;
+        $this->rows[$index]['link'] = 'new';
     }
 
     public function removeRow(int $index): void
@@ -179,6 +252,7 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.name' => 'required|string|max:100',
             'rows.*.price' => 'required|integer|min:0|max:100000',
             'rows.*.temperature' => 'required|in:hot,cold',
+            'rows.*.product_id' => 'nullable|integer|exists:products,id',
         ], [
             'rows.required' => '商品を1つ以上入力してください',
             'rows.min' => '商品を1つ以上入力してください',
@@ -369,6 +443,30 @@ new #[Layout('components.layouts.app')] class extends Component {
                         <flux:button size="sm" variant="ghost" class="mt-2" wire:click="removeRow({{ $i }})">この行を削除</flux:button>
                     </div>
                 @endforeach
+
+                <div class="mt-2 flex flex-col gap-1">
+                    @if (in_array($row['link'], ['auto', 'manual'], true))
+                        <flux:text>
+                            紐づけ: {{ $row['product_name'] }}
+                            ({{ $row['volume_ml'] ? $row['volume_ml'].'ml' : '容量未登録' }})
+                        </flux:text>
+                        <div>
+                            <flux:button size="xs" variant="ghost" wire:click="unlinkProduct({{ $i }})">新しい商品にする</flux:button>
+                        </div>
+                    @else
+                        @if ($row['candidates'])
+                            <flux:text>近い商品があります。選ぶと紐づけます。</flux:text>
+                            <div class="flex flex-wrap gap-2">
+                                @foreach ($row['candidates'] as $c)
+                                    <flux:button size="xs" wire:click="selectCandidate({{ $i }}, {{ $c['id'] }})">
+                                        {{ $c['name'] }}({{ $c['volume_ml'] ? $c['volume_ml'].'ml' : '容量未登録' }})
+                                    </flux:button>
+                                @endforeach
+                            </div>
+                        @endif
+                        <flux:text>選ばない場合は新しい商品として登録されます(容量は空)。</flux:text>
+                    @endif
+                </div>
 
                 <flux:button wire:click="addRow">行を追加する</flux:button>
 
