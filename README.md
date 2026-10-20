@@ -14,18 +14,7 @@
 cp .env.example .env
 ```
 
-Issue #14で`.env.example`のMySQL設定を統一するまでは、作成した`.env`のDB設定を次の値へ変更します。
-
-```dotenv
-DB_CONNECTION=mysql
-DB_HOST=mysql
-DB_PORT=3306
-DB_DATABASE=laravel
-DB_USERNAME=sail
-DB_PASSWORD=password
-```
-
-設定後、次を実行します。
+`.env.example`にはSailのMySQL接続設定が入っています。コピー後、次を実行します。
 
 ```bash
 docker run --rm \
