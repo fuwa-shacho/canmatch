@@ -91,6 +91,8 @@ class MapPageTest extends TestCase
             ->assertSee('id="product-search-form"', false)
             ->assertSee('name="product_name"', false)
             ->assertSee("parameters.set('product_name', productName)", false)
+            ->assertSee('const query = parameters.toString()', false)
+            ->assertDontSee('parameters.size', false)
             ->assertSee('markerLayer?.clearLayers()', false)
             ->assertSee('renderSearchResults(machines, productName)', false)
             ->assertSee('商品名の一部で検索');
