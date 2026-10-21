@@ -1,5 +1,9 @@
-"""evals/answers.json の形式と、写真との対応を確認する"""
+"""evals/answers.json の形式と、写真との対応を確認する
+
+問題なしなら終了コード0、エラーまたは正解未記入の写真があれば終了コード1。
+"""
 import json
+import sys
 from pathlib import Path
 
 root = Path(__file__).parent
@@ -39,5 +43,9 @@ pending = sorted(actual - covered)
 for e in errors:
     print("NG:", e)
 if pending:
-    print("正解が未記入の写真:", ", ".join(pending))
-print(f"自販機 {len(data['machines'])} 台、写真 {len(covered)} 枚を確認" + ("(問題なし)" if not errors else f"(エラー {len(errors)} 件)"))
+    print("NG: 正解が未記入の写真:", ", ".join(pending))
+summary = f"自販機 {len(data['machines'])} 台、写真 {len(covered)} 枚を確認"
+if errors or pending:
+    print(f"{summary}(エラー {len(errors)} 件、正解未記入の写真 {len(pending)} 枚)")
+    sys.exit(1)
+print(f"{summary}(問題なし)")
