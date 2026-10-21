@@ -1,0 +1,169 @@
+{
+  "_readme": "同じ自販機を撮った写真は machines[].photos にまとめる。同じ商品・価格・温冷は1行にまとめ、並んでいる列の数を count に書く(1列なら省略)。name は写真に印字されている表記、aliases は商品ページの名前や英語表記など、同じ商品として扱ってよい別表記。評価は name または aliases のどれかと、price・temperature の組で数え、count は点数に使わない。slots は自販機の列の総数(count の合計と一致させる確認用)。note は評価に使わない。",
+  "machines": [
+    {
+      "id": "coke_large",
+      "maker": "コカ・コーラ",
+      "is_vending_machine": true,
+      "slots": 30,
+      "photos": [
+        { "file": "01_day_front.jpg", "condition": "昼・正面" },
+        { "file": "02_day_front.jpg", "condition": "昼・正面" },
+        { "file": "05_day_angle_left.jpg", "condition": "昼・斜め(左)" },
+        { "file": "06_day_angle_right.jpg", "condition": "昼・斜め(右)" }
+      ],
+      "products": [
+        { "name": "コカ・コーラ", "price": 190, "temperature": "cold", "count": 2, "aliases": ["Coca-Cola"] },
+        { "name": "い・ろ・は・す 天然水", "price": 130, "temperature": "cold", "count": 2, "aliases": ["いろはす 天然水"] },
+        { "name": "ジョージア カフェラテ", "price": 180, "temperature": "cold", "count": 3, "aliases": ["Café LATTE"] },
+        { "name": "リアルゴールド", "price": 150, "temperature": "cold", "count": 3, "aliases": ["REAL GOLD"] },
+        { "name": "やかんの麦茶", "price": 140, "temperature": "cold", "count": 3 },
+        { "name": "綾鷹", "price": 160, "temperature": "cold", "count": 2 },
+        { "name": "紅茶花伝 ロイヤルミルクティー", "price": 150, "temperature": "cold" },
+        { "name": "ジョージア 香る微糖", "price": 160, "temperature": "cold", "count": 2 },
+        { "name": "ジョージア 香るブラック", "price": 150, "temperature": "cold", "count": 2 },
+        { "name": "コカ・コーラ", "price": 100, "temperature": "cold", "count": 2, "aliases": ["Coca-Cola"] },
+        { "name": "ファンタ オレンジ", "price": 110, "temperature": "cold", "count": 2, "aliases": ["FANTA"] },
+        { "name": "ジョージア アイスカフェオレ", "price": 150, "temperature": "cold", "aliases": ["ICE CAFE AU LAIT"] },
+        { "name": "ジョージア エメラルドマウンテンブレンド", "price": 100, "temperature": "cold", "count": 2, "aliases": ["EMERALD MOUNTAIN Blend"] },
+        { "name": "ジョージア ゴールデンドリップ", "price": 100, "temperature": "cold", "aliases": ["GOLDEN DRIP"] },
+        { "name": "ジョージア プラチナムブラック", "price": 100, "temperature": "cold", "count": 2, "aliases": ["PLATINUM BLACK"] }
+      ]
+    },
+    {
+      "id": "suntory_night",
+      "maker": "サントリー",
+      "is_vending_machine": true,
+      "slots": 36,
+      "photos": [
+        { "file": "03_night_front.jpg", "condition": "夜・正面" },
+        { "file": "04_night_front.jpg", "condition": "夜・正面" }
+      ],
+      "products": [
+        { "name": "天然水", "price": 130, "temperature": "cold" },
+        { "name": "クラフトボス ブラック", "price": 180, "temperature": "cold", "count": 2, "aliases": ["CRAFT BOSS BLACK", "BOSS ブラック"] },
+        { "name": "マスカットサイダー", "price": 170, "temperature": "cold" },
+        { "name": "ペプシ 生コーラ", "price": 170, "temperature": "cold", "aliases": ["PEPSI COLA 生", "ペプシコーラ"] },
+        { "name": "C.C.レモン", "price": 170, "temperature": "cold", "aliases": ["C.C.Lemon"] },
+        { "name": "メロンソーダ", "price": 170, "temperature": "cold", "aliases": ["POP メロンソーダ"] },
+        { "name": "やさしい麦茶", "price": 160, "temperature": "cold" },
+        { "name": "GREEN DA・KA・RA", "price": 160, "temperature": "cold", "aliases": ["グリーンダカラ"] },
+        { "name": "きりっと果実", "price": 180, "temperature": "cold", "count": 2 },
+        { "name": "伊右衛門", "price": 170, "temperature": "cold" },
+        { "name": "ペプシ ゼロ", "price": 140, "temperature": "cold", "aliases": ["PEPSI ZERO"] },
+        { "name": "C.C.レモン", "price": 140, "temperature": "cold", "aliases": ["C.C.Lemon"] },
+        { "name": "マウンテンデュー", "price": 140, "temperature": "cold", "aliases": ["Mountain Dew"] },
+        { "name": "NOPE", "price": 130, "temperature": "cold" },
+        { "name": "なっちゃん りんご", "price": 150, "temperature": "cold", "count": 2, "aliases": ["なっちゃんりんご"] },
+        { "name": "クラフトボス ラテ", "price": 160, "temperature": "cold", "aliases": ["CRAFT BOSS ラテ", "BOSS カフェラテ"] },
+        { "name": "デカビタC", "price": 140, "temperature": "cold", "aliases": ["DEKAVITA C"] },
+        { "name": "Red Bull", "price": 220, "temperature": "cold", "aliases": ["レッドブル"] },
+        { "name": "BOSS 無糖ブラック", "price": 120, "temperature": "cold", "count": 2 },
+        { "name": "BOSS 贅沢微糖", "price": 120, "temperature": "cold", "count": 2 },
+        { "name": "BOSS レインボーマウンテンブレンド", "price": 120, "temperature": "cold", "count": 2 },
+        { "name": "プレミアムボス", "price": 170, "temperature": "cold", "aliases": ["PREMIUM BOSS"] },
+        { "name": "白の贅沢 ミルクティー", "price": 150, "temperature": "cold", "count": 2, "aliases": ["贅沢ミルクティー", "Lipton 白の贅沢 ミルクティー"] },
+        { "name": "プレミアムボス 微糖", "price": 130, "temperature": "cold" },
+        { "name": "BOSS 歴戦の微糖", "price": 130, "temperature": "cold", "count": 2 },
+        { "name": "STARBUCKS カフェラテ", "price": 180, "temperature": "cold", "aliases": ["スターバックス カフェラテ"] },
+        { "name": "BOSS カフェオレ", "price": 140, "temperature": "cold", "count": 2, "aliases": ["BOSS Café au Lait"] }
+      ]
+    },
+    {
+      "id": "suntory_day",
+      "maker": "サントリー",
+      "is_vending_machine": true,
+      "slots": 36,
+      "photos": [
+        { "file": "09_suntory.jpg", "condition": "昼・正面" }
+      ],
+      "products": [
+        { "name": "BOSS 贅沢微糖", "price": 120, "temperature": "cold", "count": 4 },
+        { "name": "BOSS レインボーマウンテンブレンド", "price": 120, "temperature": "cold", "count": 3 },
+        { "name": "BOSS 無糖ブラック", "price": 120, "temperature": "cold", "count": 3 },
+        { "name": "NOPE", "price": 130, "temperature": "cold" },
+        { "name": "白の贅沢 ミルクティー", "price": 160, "temperature": "cold", "count": 2, "aliases": ["贅沢ミルクティー", "Lipton 白の贅沢 ミルクティー"] },
+        { "name": "伊右衛門", "price": 150, "temperature": "cold", "count": 2, "aliases": ["伊右衛門 一番茶&抹茶入り"] },
+        { "name": "飲むヨーグレット", "price": 150, "temperature": "cold" },
+        { "name": "クラフトボス ラテ", "price": 170, "temperature": "cold", "count": 3, "aliases": ["CRAFT BOSS ラテ", "BOSS カフェラテ"], "note": "1段目の2列と3段目の1列でパッケージが違う(旧デザイン混在)との確認あり。写真では同じ名前に見えるため1行にまとめた" },
+        { "name": "特茶", "price": 190, "temperature": "cold" },
+        { "name": "伊右衛門", "price": 160, "temperature": "cold", "count": 2, "aliases": ["伊右衛門 一番茶&抹茶入り"] },
+        { "name": "きりっと果実", "price": 180, "temperature": "cold" },
+        { "name": "マスカットサイダー", "price": 180, "temperature": "cold" },
+        { "name": "GREEN DA・KA・RA", "price": 180, "temperature": "cold", "count": 2, "aliases": ["グリーンダカラ"] },
+        { "name": "天然水", "price": 130, "temperature": "cold", "count": 2 },
+        { "name": "クラフトボス ブラック", "price": 180, "temperature": "cold", "count": 2, "aliases": ["CRAFT BOSS BLACK", "BOSS ブラック"] },
+        { "name": "C.C.レモン", "price": 180, "temperature": "cold", "aliases": ["C.C.Lemon"] },
+        { "name": "デカビタC", "price": 150, "temperature": "cold", "count": 2, "aliases": ["DEKAVITA C"] },
+        { "name": "果実でビタミン", "price": 160, "temperature": "cold", "aliases": ["果実でビタミン GREEN DA・KA・RA"] },
+        { "name": "なっちゃん りんご", "price": 160, "temperature": "cold", "aliases": ["なっちゃんりんご"] },
+        { "name": "プレミアムボス", "price": 170, "temperature": "cold", "aliases": ["PREMIUM BOSS"] }
+      ]
+    },
+    {
+      "id": "dydo_2",
+      "maker": "ダイドー",
+      "is_vending_machine": true,
+      "slots": 32,
+      "slots_note": "各段の白い丸ボタン(商品なし)と、中段の「新商品準備中」は数えない。お菓子(チップスター・プリッツ・キットカット)は数える。",
+      "photos": [
+        { "file": "07_reflection.jpg", "condition": "昼・正面(全体)" },
+        { "file": "08_reflection.jpg", "condition": "昼・正面(商品部分の拡大)" }
+      ],
+      "products": [
+        { "name": "葉の茶", "price": 150, "temperature": "cold", "count": 3 },
+        { "name": "おいしい麦茶", "price": 150, "temperature": "cold", "count": 2 },
+        { "name": "天然水", "price": 120, "temperature": "cold", "count": 3 },
+        { "name": "ダイドーカフェラボ ブラック 世界一のバリスタ監修", "price": 190, "temperature": "cold", "aliases": ["世界一のバリスタ監修 Black", "世界一のバリスタ ブラック", "DyDo CAFE Lab ブラック"] },
+        { "name": "ウィルキンソン タンサン レモン", "price": 140, "temperature": "cold", "count": 2, "aliases": ["ウィルキンソン レモン", "WILKINSON LEMON"] },
+        { "name": "チップスター", "price": 170, "temperature": null, "count": 2 },
+        { "name": "ダイドーブレンド 絶品ブラック", "price": 100, "temperature": "cold", "count": 3, "aliases": ["絶品 BLACK", "ブラック"] },
+        { "name": "ダイドーブレンド 絶品微糖", "price": 110, "temperature": "cold", "count": 2, "aliases": ["絶品微糖"] },
+        { "name": "ダイドーブレンド 絶品カフェオレ", "price": 110, "temperature": "cold", "count": 2, "aliases": ["絶品カフェオレ", "カフェオレ"] },
+        { "name": "ココア", "price": 160, "temperature": "cold" },
+        { "name": "メロンスカッシュ", "price": 110, "temperature": "cold" },
+        { "name": "レモンティー", "price": 150, "temperature": "cold" },
+        { "name": "ミルクティー", "price": 150, "temperature": "cold" },
+        { "name": "プリッツ", "price": 130, "temperature": null, "count": 2 },
+        { "name": "世界一のバリスタ ブラック", "price": 170, "temperature": "cold", "count": 2 },
+        { "name": "モンスターエナジー", "price": 230, "temperature": "cold", "count": 2, "aliases": ["MONSTER ENERGY"] },
+        { "name": "キットカット ミニ", "price": 170, "temperature": null, "count": 2 }
+      ]
+    },
+    {
+      "id": "dydo",
+      "maker": "ダイドー",
+      "is_vending_machine": true,
+      "slots": 35,
+      "slots_note": "最下段の右端は『新商品準備中』の表示で商品がないため、数に含めない",
+      "photos": [
+        { "file": "10_dydo.jpg", "condition": "昼・正面" }
+      ],
+      "products": [
+        { "name": "葉の茶", "price": 150, "temperature": "cold", "count": 2 },
+        { "name": "おいしい麦茶", "price": 150, "temperature": "cold" },
+        { "name": "天然水", "price": 120, "temperature": "cold", "count": 4 },
+        { "name": "スポーツチャージ", "price": 170, "temperature": "cold", "aliases": ["SPORTS CHARGE"] },
+        { "name": "カルピス ウォーター", "price": 160, "temperature": "cold", "count": 2, "aliases": ["カルピス Water"] },
+        { "name": "三ツ矢サイダー", "price": 160, "temperature": "cold", "aliases": ["MITSUYA CIDER"] },
+        { "name": "ウィルキンソン タンサン レモン", "price": 140, "temperature": "cold", "aliases": ["ウィルキンソン レモン", "WILKINSON LEMON"] },
+        { "name": "モンスターエナジー", "price": 230, "temperature": "cold", "count": 2, "aliases": ["MONSTER ENERGY"] },
+        { "name": "エナジージム", "price": 160, "temperature": "cold", "count": 2, "aliases": ["Gym ENERGY"] },
+        { "name": "ゼリー×スパークリング グレープ", "price": 170, "temperature": "cold" },
+        { "name": "とろけるピーチネクター", "price": 160, "temperature": "cold" },
+        { "name": "メロンスカッシュ", "price": 110, "temperature": "cold" },
+        { "name": "ミルクセーキ", "price": 160, "temperature": "cold" },
+        { "name": "チョコラBBスパークリング グレープフルーツ&ピーチ味", "price": 160, "temperature": "cold", "aliases": ["チョコラBB Sparkling"] },
+        { "name": "ぎゅぎゅっと!白ぶどう", "price": 160, "temperature": "cold" },
+        { "name": "レモンティー", "price": 150, "temperature": "cold" },
+        { "name": "ミルクティー", "price": 150, "temperature": "cold" },
+        { "name": "ダイドーブレンドプレミアム デミタス微糖", "price": 160, "temperature": "cold", "aliases": ["DEMITASSE 微糖"] },
+        { "name": "ダイドーブレンドプレミアム デミタスアロマ微糖", "price": 140, "temperature": "cold" },
+        { "name": "ダイドーブレンド ザ・ブラック", "price": 150, "temperature": "cold", "aliases": ["The BLACK"] },
+        { "name": "ダイドーブレンド 絶品ブラック", "price": 100, "temperature": "cold", "count": 3, "aliases": ["絶品 BLACK"] },
+        { "name": "ダイドーブレンド 絶品微糖", "price": 110, "temperature": "cold", "count": 4 },
+        { "name": "ダイドーブレンド 絶品カフェオレ", "price": 110, "temperature": "cold" }
+      ]
+    }
+  ]
+}
