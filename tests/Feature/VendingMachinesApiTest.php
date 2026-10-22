@@ -124,6 +124,8 @@ class VendingMachinesApiTest extends TestCase
 
     public function test_product_name_query_parameter_filters_machines_by_partial_product_name(): void
     {
+        $this->actingAs(User::factory()->create());
+
         $matchingMachineId = $this->createVendingMachine(
             '検索対象メーカー',
             '33.5903547',
@@ -170,6 +172,8 @@ class VendingMachinesApiTest extends TestCase
 
     public function test_product_name_query_must_be_a_string_within_the_length_limit(): void
     {
+        $this->actingAs(User::factory()->create());
+
         $this->getJson('/api/vending-machines?product_name[]=invalid')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('product_name');
