@@ -69,13 +69,14 @@ DB制約で外部キー・必須・値の範囲を守り、フォームでも同
 | maker | VARCHAR(255) NULL | 不明はNULL |
 | volume_ml | unsigned INTEGER NULL | 既知なら1以上。不明はNULL |
 | category | VARCHAR(255) NULL | 不明はNULL |
+| description | TEXT NULL | 商品の説明(甘さ、炭酸の有無、カフェイン、味の系統)。RAGの検索用の文章に使う。投稿で追加された商品は空でよい(#62) |
 | created_at / updated_at | Laravel標準timestamps | 作成・更新日時 |
 
 nameに検索用インデックスを設ける。ただし前方ワイルドカードの部分一致が高速化されるとは保証しない。name単独の一意制約は付けない。容量違いは別商品とする。メーカー・カテゴリをNULL可とするのは、読み取りで商品名しか得られない場合に不明情報を推測せず保存するため。
 
 商品名が完全一致しても、容量違いなどで複数候補があるときは先頭の1件を自動選択しない。#44ではユーザーに候補選択を求める。これは「容量違いは別商品」と「完全一致は自動紐づけ」を両立させる補完である。照合の詳細は#44で実装する。
 
-descriptionの追加は#62で扱う。
+descriptionは#62で追加した。検索用の文章は「商品名 / メーカー / カテゴリ / 容量ml / 説明」をつなげて作り、空の項目は飛ばす(`Product::searchText()`)。価格と自販機は変わるため文章に入れない。説明の根拠(確認した公式ページ、確認した事実とRAG用の判断の区別)は docs/product-master-sources.md の「商品説明(description)の根拠」に記載する。
 
 ## #23 machine_products
 

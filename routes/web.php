@@ -18,6 +18,7 @@ Route::view('map', 'map')
 
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
+    Volt::route('posts/create', 'posts.create')->name('posts.create');
 
     Route::get('rare-products', RareProductController::class)->name('rare-products.index');
     Volt::route('settings/profile', 'settings.profile')->name('settings.profile');
