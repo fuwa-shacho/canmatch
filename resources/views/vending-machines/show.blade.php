@@ -5,7 +5,19 @@
                 ← 地図へ戻る
             </a>
             <h1 class="mt-2 text-2xl font-bold">自販機の詳細</h1>
+            <a
+                href="{{ route('posts.create', ['machine' => $vendingMachine->id]) }}"
+                class="mt-3 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+                情報を更新する
+            </a>
         </div>
+
+        @if (session('warning'))
+            <p role="alert" class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-800">
+                {{ session('warning') }}
+            </p>
+        @endif
 
         <section class="rounded-xl border border-neutral-200 p-4 dark:border-neutral-700">
             <h2 class="text-lg font-semibold">基本情報</h2>

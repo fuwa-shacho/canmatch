@@ -5,8 +5,8 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\VendingMachine;
 use App\Services\VendingMachineRegistrar;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class VendingMachineRegistrarTest extends TestCase
@@ -71,7 +71,7 @@ class VendingMachineRegistrarTest extends TestCase
                 ['name' => '存在しない商品', 'price' => 100, 'temperature' => 'cold', 'product_id' => 999999],
             ]);
             $this->fail('例外が出るはずです');
-        } catch (QueryException) {
+        } catch (ValidationException) {
             // 想定どおり
         }
 
@@ -79,49 +79,112 @@ class VendingMachineRegistrarTest extends TestCase
         $this->assertSame(0, Product::count());
         $this->assertDatabaseCount('machine_products', 0);
     }
+
     public function test_更新すると商品と価格が入れ替わり最終確認日時が進む(): void
-{
-    $registrar = app(VendingMachineRegistrar::class);
-    $machine = $registrar->register($this->attributes(), [
-        ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
-    ]);
-    $before = $machine->last_confirmed_at;
-
-    $this->travel(3)->days();
-
-    $registrar->update($machine, [
-        ['name' => 'コーヒー', 'price' => 130, 'temperature' => 'hot', 'product_id' => null],
-    ]);
-
-    $machine->refresh();
-    $this->assertTrue($machine->last_confirmed_at->gt($before));
-    $this->assertSame(['コーヒー'], $machine->products->pluck('name')->all());
-    $this->assertSame(130, $machine->products->first()->pivot->price);
-}
-
-public function test_更新に失敗したら元の商品と日時が残る(): void
-{
-    $registrar = app(VendingMachineRegistrar::class);
-    $machine = $registrar->register($this->attributes(), [
-        ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
-    ]);
-    $before = $machine->last_confirmed_at;
-
-    $this->travel(3)->days();
-
-    try {
-        $registrar->update($machine, [
-            ['name' => '新商品', 'price' => 100, 'temperature' => 'cold', 'product_id' => null],
-            ['name' => '存在しない商品', 'price' => 100, 'temperature' => 'cold', 'product_id' => 999999],
+    {
+        $registrar = app(VendingMachineRegistrar::class);
+        $machine = $registrar->register($this->attributes(), [
+            ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
         ]);
-        $this->fail('例外が出るはずです');
-    } catch (QueryException) {
-        // 想定どおり
+        $before = $machine->last_confirmed_at;
+
+        $this->travel(3)->days();
+
+        $registrar->update($machine, [
+            ['name' => 'コーヒー', 'price' => 130, 'temperature' => 'hot', 'product_id' => null],
+        ]);
+
+        $machine->refresh();
+        $this->assertTrue($machine->last_confirmed_at->gt($before));
+        $this->assertSame(['コーヒー'], $machine->products->pluck('name')->all());
+        $this->assertSame(130, $machine->products->first()->pivot->price);
     }
 
-    $machine->refresh();
-    $this->assertTrue($machine->last_confirmed_at->equalTo($before));
-    $this->assertSame(['お茶'], $machine->products->pluck('name')->all());
-    $this->assertSame(0, Product::where('name', '新商品')->count());
-}
+    public function test_更新に失敗したら元の商品と日時が残る(): void
+    {
+        $registrar = app(VendingMachineRegistrar::class);
+        $machine = $registrar->register($this->attributes(), [
+            ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+        ]);
+        $before = $machine->last_confirmed_at;
+
+        $this->travel(3)->days();
+
+        try {
+            $registrar->update($machine, [
+                ['name' => '新商品', 'price' => 100, 'temperature' => 'cold', 'product_id' => null],
+                ['name' => '存在しない商品', 'price' => 100, 'temperature' => 'cold', 'product_id' => 999999],
+            ]);
+            $this->fail('例外が出るはずです');
+        } catch (ValidationException) {
+            // 想定どおり
+        }
+
+        $machine->refresh();
+        $this->assertTrue($machine->last_confirmed_at->equalTo($before));
+        $this->assertSame(['お茶'], $machine->products->pluck('name')->all());
+        $this->assertSame(0, Product::where('name', '新商品')->count());
+    }
+
+    public function test_更新時の重複商品と温冷区分を拒否し既存データを維持する(): void
+    {
+        $registrar = app(VendingMachineRegistrar::class);
+        $product = Product::create(['name' => 'お茶']);
+        $machine = $registrar->register($this->attributes(), [
+            ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => $product->id],
+        ]);
+        $before = $machine->last_confirmed_at;
+        $photoPath = $machine->photo_path;
+
+        $this->travel(3)->days();
+
+        try {
+            $registrar->update($machine, [
+                ['name' => 'お茶', 'price' => 140, 'temperature' => 'cold', 'product_id' => $product->id],
+                ['name' => 'お茶', 'price' => 160, 'temperature' => 'cold', 'product_id' => $product->id],
+            ], 'photos/2026/10/new.jpg');
+            $this->fail('重複商品は拒否されるはずです');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('rows', $exception->errors());
+        }
+
+        $machine->refresh();
+        $this->assertTrue($machine->last_confirmed_at->equalTo($before));
+        $this->assertSame($photoPath, $machine->photo_path);
+        $this->assertSame(1, $machine->products()->count());
+        $this->assertDatabaseHas('machine_products', [
+            'vending_machine_id' => $machine->id,
+            'product_id' => $product->id,
+            'price' => 150,
+            'temperature' => 'cold',
+        ]);
+    }
+
+    public function test_更新時は同一商品でも温冷区分が異なれば登録できる(): void
+    {
+        $registrar = app(VendingMachineRegistrar::class);
+        $product = Product::create(['name' => 'お茶']);
+        $machine = $registrar->register($this->attributes(), [
+            ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => $product->id],
+        ]);
+
+        $registrar->update($machine, [
+            ['name' => 'お茶', 'price' => 140, 'temperature' => 'hot', 'product_id' => $product->id],
+            ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => $product->id],
+        ]);
+
+        $this->assertDatabaseCount('machine_products', 2);
+        $this->assertDatabaseHas('machine_products', [
+            'vending_machine_id' => $machine->id,
+            'product_id' => $product->id,
+            'price' => 140,
+            'temperature' => 'hot',
+        ]);
+        $this->assertDatabaseHas('machine_products', [
+            'vending_machine_id' => $machine->id,
+            'product_id' => $product->id,
+            'price' => 150,
+            'temperature' => 'cold',
+        ]);
+    }
 }

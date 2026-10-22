@@ -47,6 +47,7 @@ class VendingMachineDetailTest extends TestCase
             ->assertSee('185ml')
             ->assertSee('130円')
             ->assertSee('温かい')
+            ->assertSee(route('posts.create', ['machine' => $machine->id]))
             ->assertSee('id="vending-machine-detail-map"', false)
             ->assertSee('data-latitude="33.5890000"', false)
             ->assertSee('data-longitude="130.3950000"', false);

@@ -1,17 +1,21 @@
 <?php
 
 use App\Exceptions\AiReadFailedException;
+use App\Models\VendingMachine;
 use App\Services\ProductMatcher;
 use App\Services\VendingMachineRegistrar;
 use App\Services\VendingMachineReader;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use League\Flysystem\UnableToCheckFileExistence;
+use League\Flysystem\UnableToDeleteFile;
+use League\Flysystem\UnableToSetVisibility;
+use League\Flysystem\UnableToWriteFile;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
-use App\Models\VendingMachine;
 
 new #[Layout('components.layouts.app')] class extends Component {
     use WithFileUploads;
@@ -87,10 +91,41 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->aiMeta = [];
         $this->validate();
 
+        if ($this->savedPath !== null && ! $this->removeSavedPhoto()) {
+            $this->addError('photo', '前回の写真を削除できませんでした。時間をおいてから再度お試しください。');
+
+            return;
+        }
+
         $disk = config('filesystems.photos_disk');
 
-        $this->savedPath = $this->photo->store('photos/'.now()->format('Y/m'), $disk);
-        $this->previewUrl = Storage::disk($disk)->temporaryUrl($this->savedPath, now()->addMinutes(10));
+        try {
+            $savedPath = $this->photo->store('photos/'.now()->format('Y/m'), $disk);
+            $stored = is_string($savedPath) && Storage::disk($disk)->exists($savedPath);
+        } catch (UnableToCheckFileExistence|UnableToSetVisibility|UnableToWriteFile $e) {
+            report($e);
+            $this->addError('photo', '写真を保存できませんでした。もう一度お試しください。');
+
+            return;
+        }
+
+        if (! $stored) {
+            $this->addError('photo', '写真を保存できませんでした。もう一度お試しください。');
+
+            return;
+        }
+
+        $this->savedPath = $savedPath;
+
+        try {
+            $this->previewUrl = Storage::disk($disk)->temporaryUrl($savedPath, now()->addMinutes(10));
+        } catch (\RuntimeException $e) {
+            report($e);
+            $this->removeSavedPhoto();
+            $this->addError('photo', '写真のプレビューを準備できませんでした。もう一度お試しください。');
+
+            return;
+        }
 
         $draft = ['is_vending_machine' => true, 'maker' => null, 'products' => []];
 
@@ -108,6 +143,7 @@ new #[Layout('components.layouts.app')] class extends Component {
 
         if (! $draft['is_vending_machine']) {
             $this->readError = '自動販売機が写っていないようです。撮り直してください。';
+            $this->removeSavedPhoto();
 
             return;
         }
@@ -181,7 +217,11 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     public function selectCandidate(int $index, int $productId): void
     {
-        $candidate = collect($this->rows[$index]['candidates'] ?? [])->firstWhere('id', $productId);
+        $row = $this->rows[$index] ?? null;
+        $candidate = $row === null
+            ? null
+            : collect($this->matchFor((string) ($row['name'] ?? ''))['candidates'])
+                ->firstWhere('id', $productId);
 
         // クライアントから来たIDを信用せず、サーバーが出した候補の中にあるものだけ受け付ける
         if ($candidate === null) {
@@ -214,11 +254,17 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     public function backToForm(): void
     {
+        if ($this->savedPath !== null && ! $this->removeSavedPhoto()) {
+            $this->addError('photo', '写真を削除できませんでした。時間をおいてから再度お試しください。');
+        }
+
         $this->step = 'form';
+        $this->photo = null;
         $this->rows = [];
         $this->readError = null;
         $this->notice = null;
         $this->aiMeta = [];
+        $this->aiMaker = null;
         $this->registered = false;
     }
 
@@ -233,7 +279,28 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.name' => 'required|string|max:100',
             'rows.*.price' => 'required|integer|min:0|max:100000',
             'rows.*.temperature' => 'required|in:hot,cold',
-            'rows.*.product_id' => 'nullable|integer|exists:products,id',
+            'rows.*.product_id' => [
+                'nullable',
+                'integer',
+                'exists:products,id',
+                function ($attribute, $value, $fail): void {
+                    if ($value === null) {
+                        return;
+                    }
+
+                    $index = (int) explode('.', $attribute)[1];
+                    $match = $this->matchFor((string) ($this->rows[$index]['name'] ?? ''));
+                    $validProductIds = array_column($match['candidates'], 'id');
+
+                    if ($match['product_id'] !== null) {
+                        $validProductIds[] = $match['product_id'];
+                    }
+
+                    if (! in_array((int) $value, $validProductIds, true)) {
+                        $fail('選択した商品を確認できません。候補から選び直してください。');
+                    }
+                },
+            ],
         ], [
             'rows.required' => '商品を1つ以上入力してください',
             'rows.min' => '商品を1つ以上入力してください',
@@ -246,33 +313,93 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.temperature.required' => '温冷を選んでください',
         ]);
 
-            abort_if($this->savedPath === null || $this->latitude === null || $this->longitude === null, 422);
+        if ($this->savedPath === null) {
+            $this->addError('photo', '写真を撮り直してから登録してください。');
 
-            $machine = null;
+            return;
+        }
 
-            try {
-                $registrar = app(VendingMachineRegistrar::class);
+        $oldPhotoPath = null;
+        try {
+            $registrar = app(VendingMachineRegistrar::class);
 
-                $machine = $this->machineId !== null
-                    ? $registrar->update(VendingMachine::findOrFail($this->machineId), $this->rows, $this->savedPath)
-                    : $registrar->register([
-                        'latitude' => $this->latitude,
-                        'longitude' => $this->longitude,
-                        'maker' => $this->maker === 'unknown' ? null : $this->maker,
-                        'photo_path' => $this->savedPath,
-                        'user_id' => auth()->id(),
-                    ], $this->rows);
-            } catch (\Illuminate\Database\QueryException $e) {
-                report($e);
-                $this->addError('rows', '保存に失敗しました。もう一度試してください。');
+            if ($this->machineId !== null) {
+                $machine = VendingMachine::query()->findOrFail($this->machineId);
+                $oldPhotoPath = $machine->photo_path;
+                $machine = $registrar->update($machine, $this->rows, $this->savedPath);
+            } else {
+                abort_if($this->latitude === null || $this->longitude === null, 422);
 
-                return;
+                $machine = $registrar->register([
+                    'latitude' => $this->latitude,
+                    'longitude' => $this->longitude,
+                    'maker' => $this->maker === 'unknown' ? null : $this->maker,
+                    'photo_path' => $this->savedPath,
+                    'user_id' => auth()->id(),
+                ], $this->rows);
+            }
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->addError('rows', $e->errors()['rows'][0] ?? '入力内容を確認してください。');
+
+            return;
+        } catch (\Illuminate\Database\QueryException $e) {
+            report($e);
+            $this->addError('rows', '保存に失敗しました。もう一度試してください。');
+
+            if (! $this->removeSavedPhoto()) {
+                $this->addError('photo', '写真の削除にも失敗しました。サポートへお問い合わせください。');
             }
 
-            $this->registered = true;
-
-            $this->redirectRoute('vending-machines.show', $machine, navigate: true);
+            return;
         }
+
+        $this->registered = true;
+
+        if ($oldPhotoPath !== null && $oldPhotoPath !== $this->savedPath && ! $this->deletePhoto($oldPhotoPath)) {
+            session()->flash('warning', '更新しましたが、以前の写真を削除できませんでした。');
+        }
+
+        $this->redirectRoute('vending-machines.show', $machine, navigate: true);
+    }
+
+    protected function removeSavedPhoto(): bool
+    {
+        if ($this->savedPath === null) {
+            return true;
+        }
+
+        if (! $this->deletePhoto($this->savedPath)) {
+            return false;
+        }
+
+        $this->savedPath = null;
+        $this->previewUrl = null;
+
+        return true;
+    }
+
+    protected function deletePhoto(string $path): bool
+    {
+        $disk = Storage::disk(config('filesystems.photos_disk'));
+
+        try {
+            if (! $disk->exists($path)) {
+                return true;
+            }
+
+            if ($disk->delete($path)) {
+                return true;
+            }
+        } catch (UnableToCheckFileExistence|UnableToDeleteFile $e) {
+            report($e);
+
+            return false;
+        }
+
+        report(new \RuntimeException('A stored vending-machine photo could not be deleted.'));
+
+        return false;
+    }
 }; ?>
 
 <section class="mx-auto w-full max-w-3xl p-4">
@@ -373,7 +500,11 @@ new #[Layout('components.layouts.app')] class extends Component {
         <div class="mt-6 grid gap-6 md:grid-cols-2">
             <div>
                 <flux:heading size="md">撮った写真</flux:heading>
-                <img src="{{ $previewUrl }}" alt="撮った写真" class="mt-2 w-full rounded-lg">
+                @if ($previewUrl)
+                    <img src="{{ $previewUrl }}" alt="撮った写真" class="mt-2 w-full rounded-lg">
+                @else
+                    <flux:text class="mt-2 text-red-500">写真を撮り直してから登録してください。</flux:text>
+                @endif
                 @if ($aiMaker)
                     <flux:text class="mt-2">AIが読んだメーカー: {{ $aiMaker }}</flux:text>
                 @endif
