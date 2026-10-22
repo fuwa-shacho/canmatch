@@ -5,8 +5,8 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\VendingMachine;
 use App\Services\VendingMachineRegistrar;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class VendingMachineRegistrarTest extends TestCase
@@ -63,7 +63,56 @@ class VendingMachineRegistrarTest extends TestCase
         $this->assertDatabaseCount('machine_products', 2);
     }
 
-    public function test_途中で失敗したら全部取り消される(): void
+    public function test_既存商品は温冷が異なれば両方登録できる(): void
+    {
+        $product = Product::create(['name' => 'お茶']);
+
+        $machine = app(VendingMachineRegistrar::class)->register($this->attributes(), [
+            ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => $product->id],
+            ['name' => 'お茶', 'price' => 160, 'temperature' => 'hot', 'product_id' => $product->id],
+        ]);
+
+        $this->assertCount(2, $machine->products);
+        $this->assertDatabaseCount('machine_products', 2);
+    }
+
+    public function test_既存商品の同じ温冷区分の重複を拒否して全体を取り消す(): void
+    {
+        $product = Product::create(['name' => 'お茶']);
+
+        try {
+            app(VendingMachineRegistrar::class)->register($this->attributes(), [
+                ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => $product->id],
+                ['name' => 'お茶', 'price' => 160, 'temperature' => 'cold', 'product_id' => $product->id],
+            ]);
+            $this->fail('重複行は拒否されるはずです');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('rows', $exception->errors());
+        }
+
+        $this->assertSame(1, Product::count());
+        $this->assertSame(0, VendingMachine::count());
+        $this->assertDatabaseCount('machine_products', 0);
+    }
+
+    public function test_新商品の同じ温冷区分の重複を拒否して全体を取り消す(): void
+    {
+        try {
+            app(VendingMachineRegistrar::class)->register($this->attributes(), [
+                ['name' => '新作ドリンク', 'price' => 130, 'temperature' => 'cold', 'product_id' => null],
+                ['name' => '新作ドリンク', 'price' => 140, 'temperature' => 'cold', 'product_id' => null],
+            ]);
+            $this->fail('重複行は拒否されるはずです');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('rows', $exception->errors());
+        }
+
+        $this->assertSame(0, VendingMachine::count());
+        $this->assertSame(0, Product::count());
+        $this->assertDatabaseCount('machine_products', 0);
+    }
+
+    public function test_途中で不正な商品_i_dがあれば全部取り消される(): void
     {
         try {
             app(VendingMachineRegistrar::class)->register($this->attributes(), [
@@ -71,8 +120,8 @@ class VendingMachineRegistrarTest extends TestCase
                 ['name' => '存在しない商品', 'price' => 100, 'temperature' => 'cold', 'product_id' => 999999],
             ]);
             $this->fail('例外が出るはずです');
-        } catch (QueryException) {
-            // 想定どおり
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('rows', $exception->errors());
         }
 
         $this->assertSame(0, VendingMachine::count());

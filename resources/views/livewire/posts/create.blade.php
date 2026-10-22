@@ -258,6 +258,9 @@ new #[Layout('components.layouts.app')] class extends Component {
         }
 
         $this->validate([
+            'maker' => 'required|string|in:unknown,dydo,suntory,cocacola,asahi,kirin,itoen,other',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
             'rows' => 'required|array|min:1',
             'rows.*.name' => 'required|string|max:100',
             'rows.*.price' => 'required|integer|min:0|max:100000',
@@ -285,6 +288,10 @@ new #[Layout('components.layouts.app')] class extends Component {
                 },
             ],
         ], [
+            'latitude.required' => '現在地を取得してください',
+            'latitude.between' => '緯度が正しくありません',
+            'longitude.required' => '現在地を取得してください',
+            'longitude.between' => '経度が正しくありません',
             'rows.required' => '商品を1つ以上入力してください',
             'rows.min' => '商品を1つ以上入力してください',
             'rows.*.name.required' => '商品名を入力してください',
