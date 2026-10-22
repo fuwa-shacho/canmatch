@@ -73,7 +73,8 @@ new #[Layout('components.layouts.app')] class extends Component {
 
         <flux:button type="submit" variant="primary" class="w-full"
             wire:loading.attr="disabled" wire:target="save,photo">
-            <span wire:loading.remove wire:target="save">送信する</span>
+            <span wire:loading.remove wire:target="save,photo">送信する</span>
+            <span wire:loading wire:target="photo">写真を送信中...</span>
             <span wire:loading wire:target="save">送信中...</span>
         </flux:button>
 
