@@ -70,7 +70,6 @@ new #[Layout('components.layouts.app')] class extends Component {
                     }
 
                     const resized = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-                    console.log('元:', file.size, '縮小後:', resized.size);
                     this.uploading = true;
                     $wire.upload(
                         'photo',
