@@ -1,21 +1,32 @@
 <?php
 
+namespace Tests\Feature\Posts;
+
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
+use Tests\TestCase;
 
-    test('未ログインではログイン画面へ移動する', function () {
+class CreatePostTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_guest_is_redirected_to_login(): void
+    {
         $this->get('/posts/create')->assertRedirect('/login');
-    });
+    }
 
-    test('ログイン後にフォームを表示できる', function () {
+    public function test_authenticated_user_can_see_form(): void
+    {
         $this->actingAs(User::factory()->create())
             ->get('/posts/create')
             ->assertOk();
-    });
+    }
 
-    test('正常な画像をsaveすると受信済みになる', function () {
+    public function test_valid_image_is_received(): void
+    {
         Storage::fake('local');
         $this->actingAs(User::factory()->create());
 
@@ -25,9 +36,10 @@ use Livewire\Volt\Volt;
             ->assertHasNoErrors()
             ->assertSet('received', true)
             ->assertSee('サーバーに届きました。');
-    });
+    }
 
-    test('画像ではないファイルを拒否する', function () {
+    public function test_non_image_file_is_rejected(): void
+    {
         Storage::fake('local');
         $this->actingAs(User::factory()->create());
 
@@ -36,4 +48,5 @@ use Livewire\Volt\Volt;
             ->call('save')
             ->assertHasErrors(['photo'])
             ->assertSet('received', false);
-    });
+    }
+}
