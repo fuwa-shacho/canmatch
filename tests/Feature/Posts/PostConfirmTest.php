@@ -3,6 +3,7 @@
 namespace Tests\Feature\Posts;
 
 use App\Exceptions\AiReadFailedException;
+use App\Models\Product;
 use App\Services\VendingMachineReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -153,6 +154,44 @@ class PostConfirmTest extends TestCase
             'price' => 150,
             'temperature' => 'cold',
         ]);
+    }
+
+    public function test_selected_product_candidate_is_registered_with_the_machine(): void
+    {
+        $this->preparePhotoStorage();
+        $this->mockReader($this->vendingMachineResult([
+            ['name' => '伊右衛門', 'price' => 150, 'temperature' => 'cold'],
+        ]));
+        $product = Product::create(['name' => '伊右衛門 650ml', 'volume_ml' => 650]);
+
+        $this->submitPhoto()
+            ->call('selectCandidate', 0, $product->id)
+            ->call('register')
+            ->assertSet('registered', true);
+
+        $this->assertDatabaseHas('machine_products', [
+            'product_id' => $product->id,
+            'price' => 150,
+            'temperature' => 'cold',
+        ]);
+    }
+
+    public function test_registration_rejects_product_id_outside_current_matches(): void
+    {
+        $this->preparePhotoStorage();
+        $this->mockReader($this->vendingMachineResult([
+            ['name' => '伊右衛門', 'price' => 150, 'temperature' => 'cold'],
+        ]));
+        $otherProduct = Product::create(['name' => 'コーラ']);
+
+        $this->submitPhoto()
+            ->set('rows.0.product_id', $otherProduct->id)
+            ->call('register')
+            ->assertHasErrors(['rows.0.product_id'])
+            ->assertSet('registered', false);
+
+        $this->assertDatabaseCount('vending_machines', 0);
+        $this->assertDatabaseCount('machine_products', 0);
     }
 
     public function test_duplicate_product_and_temperature_rejects_registration_and_rolls_back(): void
