@@ -18,6 +18,7 @@ Route::view('map', 'map')
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
 
+    Volt::route('ask', 'questions.ask')->name('ask');
     Volt::route('posts/create', 'posts.create')->name('posts.create');
     Volt::route('settings/profile', 'settings.profile')->name('settings.profile');
     Volt::route('settings/password', 'settings.password')->name('settings.password');

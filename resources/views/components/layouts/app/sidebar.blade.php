@@ -18,6 +18,7 @@
                     <flux:navlist.item icon="pencil-square" href="/posts/create" wire:navigate>投稿</flux:navlist.item>
                     <flux:navlist.item icon="magnifying-glass" href="/search" wire:navigate>検索</flux:navlist.item>
                     <flux:navlist.item icon="trophy" href="/ranking" wire:navigate>ランキング</flux:navlist.item>
+                    <flux:navlist.item icon="chat-bubble-left-right" :href="route('ask')" :current="request()->routeIs('ask')" wire:navigate>質問</flux:navlist.item>
                 </flux:navlist.group>
             </flux:navlist>
 
