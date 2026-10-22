@@ -32,6 +32,9 @@
 - 1位の score がしきい値未満なら、飲み物と関係のない質問とみなして答えない(生成を呼ばない)
 - しきい値以上なら、上位10件(score がしきい値未満のものは除く)を根拠の候補にする
 - しきい値は仮に 0.45。Issue 67 の評価で調整する
+  - 設定:`CF_RAG_SCORE_THRESHOLD`(しきい値)、`CF_RAG_TOP_K`(取り出す件数)、`CF_RAG_MAX_EVIDENCE`(AIに渡す最大行数)
+  - 実装:`App\Services\Rag\EvidenceRetriever`(Issue 64)
+  - 確認用:`php artisan rag:evidence "甘くない炭酸"` で、1位の score と根拠の行を表示する(生成は呼ばない)
   - 61 での確認(3件のみ):飲み物の質問は1位 0.60 前後、「明日の天気は」は1位 0.40
 - score では「炭酸かどうか」のような話題は区別できるが、「甘くない」のような条件は区別できない。
   条件の判断は、根拠に商品の説明を含めて生成に任せる
@@ -52,8 +55,8 @@
 | volume_ml | 525(不明なら null) |
 | price | 160 |
 | temperature | cold(不明なら null) |
-| recorded_at | 2026-10-17 |
-| days_ago | 0 |
+| recorded_at | 2026-10-17(日本時間の日付) |
+| days_ago | 0(日本時間の日付で数える) |
 | description | 無糖。強い炭酸水(商品の説明。Issue 62で書く) |
 
 ## 回答の生成(Issue 65)
