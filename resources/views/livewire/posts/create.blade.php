@@ -32,20 +32,60 @@ new #[Layout('components.layouts.app')] class extends Component {
         <div
             x-data="{
                 uploading: false,
+                error: null,
                 async resize(event) {
                     const file = event.target.files[0];
                     if (!file) return;
-                    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-                    const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
-                    const canvas = document.createElement('canvas');
-                    canvas.width = Math.round(bitmap.width * scale);
-                    canvas.height = Math.round(bitmap.height * scale);
-                    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-                    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+                    this.error = null;
+
+                    let bitmap;
+                    try {
+                        bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+                    } catch (e) {
+                        this.fail(event, 'この写真は読み込めませんでした。別の写真を選ぶか、撮り直してください。');
+                        return;
+                    }
+
+                    let blob = null;
+                    try {
+                        const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(bitmap.width * scale);
+                        canvas.height = Math.round(bitmap.height * scale);
+                        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                        blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+                    } catch (e) {
+                        blob = null;
+                    } finally {
+                        bitmap.close();
+                    }
+
+                    if (!blob) {
+                        this.fail(event, '写真の変換に失敗しました。もう一度お試しください。');
+                        return;
+                    }
+                    if (blob.size > 2 * 1024 * 1024) {
+                        this.fail(event, '写真の容量が大きすぎて送信できません。別の写真を選ぶか、撮り直してください。');
+                        return;
+                    }
+
                     const resized = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
                     console.log('元:', file.size, '縮小後:', resized.size);
                     this.uploading = true;
-                    $wire.upload('photo', resized, () => { this.uploading = false }, () => { this.uploading = false });
+                    $wire.upload(
+                        'photo',
+                        resized,
+                        () => { this.uploading = false },
+                        () => {
+                            this.uploading = false;
+                            this.error = '写真のアップロードに失敗しました。もう一度お試しください。';
+                        }
+                    );
+                },
+                fail(event, message) {
+                    this.error = message;
+                    event.target.value = '';
+                    $wire.$set('photo', null);
                 }
             }"
         >
@@ -57,6 +97,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                 @change="resize($event)"
                 class="mt-2 block w-full text-sm"
             />
+            <flux:text x-show="error" x-text="error" x-cloak class="text-red-500"></flux:text>
             @error('photo') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
         </div>
 
