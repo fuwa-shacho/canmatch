@@ -40,7 +40,35 @@ new #[Layout('components.layouts.app')] class extends Component {
 <section class="mx-auto w-full max-w-md p-4">
     <flux:heading size="lg">写真を投稿する</flux:heading>
 
-    <form wire:submit="save" class="mt-6 flex flex-col gap-6">
+    <form
+        wire:submit="save"
+        class="mt-6 flex flex-col gap-6"
+        x-data="{ locationStatus: 'loading', locationMessage: '現在地を取得しています...' }"
+        x-init="
+            if (!navigator.geolocation) {
+                locationStatus = 'error';
+                locationMessage = 'この端末では位置情報が使えません';
+            } else {
+                navigator.geolocation.getCurrentPosition(
+                    async (pos) => {
+                        try {
+                            await $wire.setLocation(pos.coords.latitude, pos.coords.longitude);
+                            locationStatus = 'ok';
+                            locationMessage = '現在地を取得しました';
+                        } catch (e) {
+                            locationStatus = 'error';
+                            locationMessage = '現在地を送信できませんでした。もう一度お試しください';
+                        }
+                    },
+                    () => {
+                        locationStatus = 'error';
+                        locationMessage = '現在地を取得できませんでした。位置情報の許可を確認してください';
+                    },
+                    { enableHighAccuracy: true, timeout: 15000 }
+                );
+            }
+        "
+    >
         <div
             x-data="{
                 uploading: false,
@@ -123,39 +151,19 @@ new #[Layout('components.layouts.app')] class extends Component {
             <flux:select.option value="other">その他</flux:select.option>
         </flux:select>
 
-        <div
-            x-data="{ status: 'loading', message: '現在地を取得しています...' }"
-            x-init="
-                if (!navigator.geolocation) {
-                    status = 'error';
-                    message = 'この端末では位置情報が使えません';
-                } else {
-                    navigator.geolocation.getCurrentPosition(
-                        (pos) => {
-                            status = 'ok';
-                            message = '現在地を取得しました';
-                            $wire.setLocation(pos.coords.latitude, pos.coords.longitude);
-                        },
-                        () => {
-                            status = 'error';
-                            message = '現在地を取得できませんでした。位置情報の許可を確認してください';
-                        },
-                        { enableHighAccuracy: true, timeout: 10000 }
-                    );
-                }
-            "
-        >
+        <div>
             <input type="hidden" name="latitude" wire:model="latitude">
             <input type="hidden" name="longitude" wire:model="longitude">
             <p
-                x-text="message"
+                x-text="locationMessage"
                 class="text-sm"
-                :class="status === 'error' ? 'text-red-500' : (status === 'ok' ? 'text-green-600' : 'text-zinc-500')"
+                :class="locationStatus === 'error' ? 'text-red-500' : (locationStatus === 'ok' ? 'text-green-600' : 'text-zinc-500')"
             ></p>
         </div>
 
         <flux:button type="submit" variant="primary" class="w-full"
             :disabled="$latitude === null || $longitude === null"
+            x-bind:disabled="locationStatus !== 'ok' || $wire.latitude === null || $wire.longitude === null"
             wire:loading.attr="disabled" wire:target="save,photo">
             <span wire:loading.remove wire:target="save,photo">送信する</span>
             <span wire:loading wire:target="photo">写真を送信中...</span>

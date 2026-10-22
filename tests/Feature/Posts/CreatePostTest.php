@@ -31,11 +31,38 @@ class CreatePostTest extends TestCase
         $this->actingAs(User::factory()->create());
 
         Volt::test('posts.create')
+            ->call('setLocation', 33.5903547, 130.4017155)
             ->set('photo', UploadedFile::fake()->image('machine.jpg'))
             ->call('save')
             ->assertHasNoErrors()
             ->assertSet('received', true)
-            ->assertSee('サーバーに届きました。');
+            ->assertSee('サーバーに届きました')
+            ->assertSee('33.5903547')
+            ->assertSee('130.4017155');
+    }
+
+    public function test_location_is_required_before_saving(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Volt::test('posts.create')
+            ->set('photo', UploadedFile::fake()->image('machine.jpg'))
+            ->call('save')
+            ->assertHasErrors(['latitude', 'longitude'])
+            ->assertSet('received', false);
+    }
+
+    public function test_location_coordinates_must_be_within_valid_ranges(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Volt::test('posts.create')
+            ->set('latitude', 90.0000001)
+            ->set('longitude', 180.0000001)
+            ->set('photo', UploadedFile::fake()->image('machine.jpg'))
+            ->call('save')
+            ->assertHasErrors(['latitude', 'longitude'])
+            ->assertSet('received', false);
     }
 
     public function test_non_image_file_is_rejected(): void
