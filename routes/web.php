@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\RankingController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
@@ -17,6 +18,8 @@ Route::view('map', 'map')
 
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
+
+    Route::get('ranking', RankingController::class)->name('ranking.index');
 
     Volt::route('settings/profile', 'settings.profile')->name('settings.profile');
     Volt::route('settings/password', 'settings.password')->name('settings.password');
