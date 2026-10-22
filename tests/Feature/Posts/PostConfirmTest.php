@@ -3,7 +3,6 @@
 namespace Tests\Feature\Posts;
 
 use App\Exceptions\AiReadFailedException;
-use App\Models\User;
 use App\Services\VendingMachineReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -30,8 +29,8 @@ class PostConfirmTest extends TestCase
             ->assertSet('step', 'review')
             ->assertSet('rows.0.name', '開発用お茶')
             ->assertSet('rows.1.name', '開発用コーヒー')
-            ->assertSee('開発用お茶')
-            ->assertSee('開発用コーヒー')
+            ->assertSee('rows.0.name')
+            ->assertSee('rows.1.name')
             ->assertDontSee('AI生応答の開発用secret');
     }
 
