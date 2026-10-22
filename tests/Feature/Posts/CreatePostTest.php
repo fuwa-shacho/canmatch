@@ -25,7 +25,7 @@ class CreatePostTest extends TestCase
             ->assertOk();
     }
 
-    public function test_valid_image_is_received(): void
+    public function test_valid_photo_is_saved_and_has_a_temporary_preview_url(): void
     {
         Storage::fake('local');
         Storage::fake('photos');
@@ -128,6 +128,32 @@ class CreatePostTest extends TestCase
 
         $disk = \Mockery::mock(\Illuminate\Filesystem\FilesystemAdapter::class);
         $disk->shouldReceive('putFileAs')->once()->andReturn(false);
+        Storage::shouldReceive('disk')->with('photos')->andReturn($disk);
+
+        $component
+            ->call('save')
+            ->assertHasErrors(['photo'])
+            ->assertSet('savedPath', null)
+            ->assertSet('received', false)
+            ->assertSee('写真を保存できませんでした。もう一度お試しください。');
+
+        $this->assertDatabaseCount('vending_machines', 0);
+    }
+
+    public function test_storage_exception_is_reported_without_marking_the_photo_as_saved(): void
+    {
+        Storage::fake('local');
+        config(['filesystems.photos_disk' => 'photos']);
+        $this->actingAs(User::factory()->create());
+
+        $component = Volt::test('posts.create')
+            ->call('setLocation', 33.5903547, 130.4017155)
+            ->set('photo', UploadedFile::fake()->image('machine.jpg'));
+
+        $disk = \Mockery::mock(\Illuminate\Filesystem\FilesystemAdapter::class);
+        $disk->shouldReceive('putFileAs')
+            ->once()
+            ->andThrow(\League\Flysystem\UnableToWriteFile::atLocation('photos/test.jpg'));
         Storage::shouldReceive('disk')->with('photos')->andReturn($disk);
 
         $component
