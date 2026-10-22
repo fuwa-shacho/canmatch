@@ -3,9 +3,11 @@
 namespace Tests\Feature\Posts;
 
 use App\Models\User;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\UnableToWriteFile;
 use Livewire\Volt\Volt;
 use Tests\TestCase;
 
@@ -126,9 +128,12 @@ class CreatePostTest extends TestCase
             ->call('setLocation', 33.5903547, 130.4017155)
             ->set('photo', UploadedFile::fake()->image('machine.jpg'));
 
-        $disk = \Mockery::mock(\Illuminate\Filesystem\FilesystemAdapter::class);
-        $disk->shouldReceive('putFileAs')->once()->andReturn(false);
+        $temporaryDisk = Storage::disk('tmp-for-tests');
+        $disk = \Mockery::mock(FilesystemAdapter::class);
+        $disk->shouldReceive('put')->once()->andReturn(false);
+        $disk->shouldReceive('exists')->once()->andReturn(false);
         Storage::shouldReceive('disk')->with('photos')->andReturn($disk);
+        Storage::shouldReceive('disk')->with('tmp-for-tests')->andReturn($temporaryDisk);
 
         $component
             ->call('save')
@@ -150,11 +155,13 @@ class CreatePostTest extends TestCase
             ->call('setLocation', 33.5903547, 130.4017155)
             ->set('photo', UploadedFile::fake()->image('machine.jpg'));
 
-        $disk = \Mockery::mock(\Illuminate\Filesystem\FilesystemAdapter::class);
-        $disk->shouldReceive('putFileAs')
+        $temporaryDisk = Storage::disk('tmp-for-tests');
+        $disk = \Mockery::mock(FilesystemAdapter::class);
+        $disk->shouldReceive('put')
             ->once()
-            ->andThrow(\League\Flysystem\UnableToWriteFile::atLocation('photos/test.jpg'));
+            ->andThrow(UnableToWriteFile::atLocation('photos/test.jpg'));
         Storage::shouldReceive('disk')->with('photos')->andReturn($disk);
+        Storage::shouldReceive('disk')->with('tmp-for-tests')->andReturn($temporaryDisk);
 
         $component
             ->call('save')

@@ -5,6 +5,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
+use League\Flysystem\UnableToCheckFileExistence;
 use League\Flysystem\UnableToSetVisibility;
 use League\Flysystem\UnableToWriteFile;
 
@@ -50,13 +51,14 @@ new #[Layout('components.layouts.app')] class extends Component {
 
         try {
             $savedPath = $this->photo->store('photos/'.now()->format('Y/m'), $disk);
-        } catch (UnableToSetVisibility|UnableToWriteFile) {
+            $stored = $savedPath !== false && Storage::disk($disk)->exists($savedPath);
+        } catch (UnableToCheckFileExistence|UnableToSetVisibility|UnableToWriteFile) {
             $this->addError('photo', '写真を保存できませんでした。もう一度お試しください。');
 
             return;
         }
 
-        if ($savedPath === false) {
+        if (! $stored) {
             $this->addError('photo', '写真を保存できませんでした。もう一度お試しください。');
 
             return;
