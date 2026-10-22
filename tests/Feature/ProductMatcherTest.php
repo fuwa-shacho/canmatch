@@ -52,7 +52,7 @@ class ProductMatcherTest extends TestCase
         $this->assertTrue($result['candidates']->isEmpty());
     }
 
-    public function test_LIKEの記号は普通の文字として扱う(): void
+    public function test_ワイルドカード記号は普通の文字として扱う(): void
     {
         Product::create(['name' => 'お茶']);
 

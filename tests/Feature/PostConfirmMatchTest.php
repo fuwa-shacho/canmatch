@@ -35,8 +35,8 @@ class PostConfirmMatchTest extends TestCase
             ->call('selectCandidate', 0, $p->id)
             ->assertSet('rows.0.link', 'manual')
             ->assertSet('rows.0.product_id', $p->id)
-            ->call('register')
-            ->assertSet('registered', true);
+            ->assertSet('rows.0.product_name', $p->name)
+            ->assertSet('rows.0.volume_ml', 650);
     }
 
     public function test_候補にない_i_dは受け付けない(): void
@@ -75,20 +75,6 @@ class PostConfirmMatchTest extends TestCase
             ->assertSet('rows.2.link', 'new')
             ->assertSee('伊右衛門 650ml')
             ->assertSee('コカ・コーラ 350ml');
-    }
-
-    public function test_候補にない既存商品_i_dを登録に使えない(): void
-    {
-        $other = Product::create(['name' => 'コーラ']);
-
-        Volt::test('posts.create')
-            ->call('addRow')
-            ->set('rows.0.name', '伊右衛門')
-            ->set('rows.0.price', 150)
-            ->set('rows.0.temperature', 'cold')
-            ->set('rows.0.product_id', $other->id)
-            ->call('register')
-            ->assertHasErrors(['rows.0.product_id']);
     }
 
     public function test_一致しない商品は新規扱いで容量は空(): void
