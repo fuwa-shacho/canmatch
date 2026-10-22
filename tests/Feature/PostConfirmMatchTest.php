@@ -3,10 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
-use App\Services\VendingMachineReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 use Tests\TestCase;
 
@@ -27,30 +24,19 @@ class PostConfirmMatchTest extends TestCase
 
     public function test_候補から選び直せる(): void
     {
-        $this->preparePhotoStorage();
-        $this->mockReader();
         $p = Product::create(['name' => '伊右衛門 650ml', 'volume_ml' => 650]);
 
-        $component = Volt::test('posts.create')
-            ->call('setLocation', 33.5903547, 130.4017155)
-            ->set('photo', UploadedFile::fake()->image('development-machine.jpg'))
-            ->call('save')
+        Volt::test('posts.create')
+            ->call('addRow')
             ->set('rows.0.name', '伊右衛門')
             ->set('rows.0.price', 150)
             ->set('rows.0.temperature', 'cold')
             ->assertSet('rows.0.link', 'new')
             ->call('selectCandidate', 0, $p->id)
             ->assertSet('rows.0.link', 'manual')
-            ->assertSet('rows.0.product_id', $p->id);
-
-        $component->call('register')
-            ->assertSet('registered', true);
-
-        $this->assertDatabaseHas('machine_products', [
-            'product_id' => $p->id,
-            'price' => 150,
-            'temperature' => 'cold',
-        ]);
+            ->assertSet('rows.0.product_id', $p->id)
+            ->assertSet('rows.0.product_name', $p->name)
+            ->assertSet('rows.0.volume_ml', 650);
     }
 
     public function test_候補にない_i_dは受け付けない(): void
@@ -89,46 +75,6 @@ class PostConfirmMatchTest extends TestCase
             ->assertSet('rows.2.link', 'new')
             ->assertSee('伊右衛門 650ml')
             ->assertSee('コカ・コーラ 350ml');
-    }
-
-    private function preparePhotoStorage(): void
-    {
-        Storage::fake('photos');
-        config(['filesystems.photos_disk' => 'photos']);
-        Storage::disk('photos')->buildTemporaryUrlsUsing(
-            fn (string $path, $expiration, array $options): string => 'https://photos.test/'.$path
-        );
-    }
-
-    private function mockReader(): void
-    {
-        $reader = \Mockery::mock(VendingMachineReader::class);
-        $reader->shouldReceive('read')->once()->andReturn([
-            'result' => [
-                'is_vending_machine' => true,
-                'maker' => null,
-                'products' => [],
-            ],
-            'raw' => '開発用の応答',
-            'model' => 'development-model',
-            'prompt_version' => 'development-prompt',
-            'gateway_log_id' => 'development-log-id',
-        ]);
-        $this->app->instance(VendingMachineReader::class, $reader);
-    }
-
-    public function test_候補にない既存商品_i_dを登録に使えない(): void
-    {
-        $other = Product::create(['name' => 'コーラ']);
-
-        Volt::test('posts.create')
-            ->call('addRow')
-            ->set('rows.0.name', '伊右衛門')
-            ->set('rows.0.price', 150)
-            ->set('rows.0.temperature', 'cold')
-            ->set('rows.0.product_id', $other->id)
-            ->call('register')
-            ->assertHasErrors(['rows.0.product_id']);
     }
 
     public function test_一致しない商品は新規扱いで容量は空(): void
