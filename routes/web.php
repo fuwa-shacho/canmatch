@@ -18,6 +18,7 @@ Route::view('map', 'map')
 
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
+    Volt::route('posts/create', 'posts.create')->name('posts.create');
 
     Route::get('ranking', RankingController::class)->name('ranking.index');
 
