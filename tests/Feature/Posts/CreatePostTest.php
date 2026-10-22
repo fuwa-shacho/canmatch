@@ -130,7 +130,8 @@ class CreatePostTest extends TestCase
 
         $temporaryDisk = Storage::disk('tmp-for-tests');
         $disk = \Mockery::mock(FilesystemAdapter::class);
-        $disk->shouldReceive('putFileAs')->once()->andReturn(false);
+        $disk->shouldReceive('put')->once()->andReturn(false);
+        $disk->shouldReceive('exists')->once()->andReturn(false);
         Storage::shouldReceive('disk')->with('photos')->andReturn($disk);
         Storage::shouldReceive('disk')->with('tmp-for-tests')->andReturn($temporaryDisk);
 
@@ -156,7 +157,7 @@ class CreatePostTest extends TestCase
 
         $temporaryDisk = Storage::disk('tmp-for-tests');
         $disk = \Mockery::mock(FilesystemAdapter::class);
-        $disk->shouldReceive('putFileAs')
+        $disk->shouldReceive('put')
             ->once()
             ->andThrow(UnableToWriteFile::atLocation('photos/test.jpg'));
         Storage::shouldReceive('disk')->with('photos')->andReturn($disk);
