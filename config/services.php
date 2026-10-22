@@ -51,6 +51,11 @@ return [
         'embedding_model' => env('CF_EMBEDDING_MODEL', '@cf/baai/bge-m3'),
         'vectorize_index' => env('CF_VECTORIZE_INDEX', 'canmatch-products'),
         'timeout' => env('CF_TIMEOUT', 30),
+        'generation_model' => env('CF_GENERATION_MODEL'),
+        'max_tokens' => env('CF_GENERATION_MAX_TOKENS', 400),
+        'answer_prompt' => env('CF_ANSWER_PROMPT', 'rag_answer_v1'),
+        'disable_thinking' => env('CF_GENERATION_DISABLE_THINKING', true),
+        'json_mode' => env('CF_GENERATION_JSON_MODE', true),
     ],
 
 ];
