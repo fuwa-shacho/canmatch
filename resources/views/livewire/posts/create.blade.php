@@ -4,11 +4,14 @@ use App\Exceptions\AiReadFailedException;
 use App\Services\VendingMachineReader;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use League\Flysystem\UnableToDeleteFile;
+use League\Flysystem\UnableToSetVisibility;
+use League\Flysystem\UnableToWriteFile;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
-use Livewire\Attributes\Locked;
 
 new #[Layout('components.layouts.app')] class extends Component {
     use WithFileUploads;
@@ -16,7 +19,7 @@ new #[Layout('components.layouts.app')] class extends Component {
     #[Validate('required|image|max:2048')]
     public $photo;
 
-    #[Validate('required|string')]
+    #[Validate('required|string|in:unknown,dydo,suntory,cocacola,asahi,kirin,itoen,other')]
     public string $maker = 'unknown';
 
     #[Validate('required|numeric|between:-90,90')]
@@ -28,9 +31,6 @@ new #[Layout('components.layouts.app')] class extends Component {
     public string $step = 'form';
     #[Locked]
     public ?string $savedPath = null;
-
-    #[Locked]
-    public array $aiMeta = [];
 
     public ?string $notice = null;
     public ?string $previewUrl = null;
@@ -58,12 +58,28 @@ new #[Layout('components.layouts.app')] class extends Component {
     {
         $this->readError = null;
         $this->notice = null;
-        $this->aiMeta = [];
+        $this->aiMaker = null;
+        $this->rows = [];
+        $this->registered = false;
         $this->validate();
 
         $disk = config('filesystems.photos_disk');
 
-        $this->savedPath = $this->photo->store('photos/'.now()->format('Y/m'), $disk);
+        try {
+            $savedPath = $this->photo->store('photos/'.now()->format('Y/m'), $disk);
+        } catch (UnableToSetVisibility|UnableToWriteFile) {
+            $this->addError('photo', '写真を保存できませんでした。もう一度お試しください。');
+
+            return;
+        }
+
+        if ($savedPath === false) {
+            $this->addError('photo', '写真を保存できませんでした。もう一度お試しください。');
+
+            return;
+        }
+
+        $this->savedPath = $savedPath;
         $this->previewUrl = Storage::disk($disk)->temporaryUrl($this->savedPath, now()->addMinutes(10));
 
         $draft = ['is_vending_machine' => true, 'maker' => null, 'products' => []];
@@ -71,9 +87,6 @@ new #[Layout('components.layouts.app')] class extends Component {
         try {
             $read = $reader->read($this->savedPath, $disk);
             $draft = $read['result'];
-            $this->aiMeta = collect($read)
-                ->only(['raw', 'model', 'prompt_version', 'gateway_log_id'])
-                ->all();
         } catch (AiReadFailedException $e) {
             $this->notice = $e->reason === 'rate_limit'
                 ? 'AIが混み合っています。少し時間をおいて撮り直すか、手入力で登録してください。'
@@ -81,7 +94,10 @@ new #[Layout('components.layouts.app')] class extends Component {
         }
 
         if (! $draft['is_vending_machine']) {
-            $this->readError = '自動販売機が写っていないようです。撮り直してください。';
+            $this->readError = $this->deleteSavedPhoto()
+                ? '自動販売機が写っていないようです。撮り直してください。'
+                : '自動販売機が写っていないようです。保存した写真を削除できませんでした。もう一度お試しください。';
+            $this->photo = null;
 
             return;
         }
@@ -117,12 +133,41 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     public function backToForm(): void
     {
+        if (! $this->deleteSavedPhoto()) {
+            return;
+        }
+
         $this->step = 'form';
+        $this->photo = null;
         $this->rows = [];
         $this->readError = null;
         $this->notice = null;
-        $this->aiMeta = [];
+        $this->aiMaker = null;
         $this->registered = false;
+    }
+
+    private function deleteSavedPhoto(): bool
+    {
+        if ($this->savedPath === null) {
+            return true;
+        }
+
+        try {
+            $deleted = Storage::disk(config('filesystems.photos_disk'))->delete($this->savedPath);
+        } catch (UnableToDeleteFile) {
+            $deleted = false;
+        }
+
+        if (! $deleted) {
+            $this->addError('photo', '保存した写真を削除できませんでした。もう一度お試しください。');
+
+            return false;
+        }
+
+        $this->savedPath = null;
+        $this->previewUrl = null;
+
+        return true;
     }
 
     public function register(): void
@@ -153,23 +198,91 @@ new #[Layout('components.layouts.app')] class extends Component {
     @if ($step === 'form')
         <flux:heading size="lg">写真を投稿する</flux:heading>
 
-        <form wire:submit="save" class="mt-6 flex max-w-md flex-col gap-6">
+        <form
+            wire:submit="save"
+            class="mt-6 flex max-w-md flex-col gap-6"
+            x-data="{ locationStatus: 'loading', locationMessage: '現在地を取得しています...' }"
+            x-init="
+                if (!navigator.geolocation) {
+                    locationStatus = 'error';
+                    locationMessage = 'この端末では位置情報が使えません';
+                } else {
+                    navigator.geolocation.getCurrentPosition(
+                        async (pos) => {
+                            try {
+                                await $wire.setLocation(pos.coords.latitude, pos.coords.longitude);
+                                locationStatus = 'ok';
+                                locationMessage = '現在地を取得しました';
+                            } catch (e) {
+                                locationStatus = 'error';
+                                locationMessage = '現在地を送信できませんでした。もう一度お試しください';
+                            }
+                        },
+                        () => {
+                            locationStatus = 'error';
+                            locationMessage = '現在地を取得できませんでした。位置情報の許可を確認してください';
+                        },
+                        { enableHighAccuracy: true, timeout: 15000 }
+                    );
+                }
+            "
+        >
             <div
                 x-data="{
                     uploading: false,
+                    error: null,
                     async resize(event) {
                         const file = event.target.files[0];
                         if (!file) return;
-                        const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-                        const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
-                        const canvas = document.createElement('canvas');
-                        canvas.width = Math.round(bitmap.width * scale);
-                        canvas.height = Math.round(bitmap.height * scale);
-                        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-                        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+                        this.error = null;
+
+                        let bitmap;
+                        try {
+                            bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+                        } catch (e) {
+                            this.fail(event, 'この写真は読み込めませんでした。別の写真を選ぶか、撮り直してください。');
+                            return;
+                        }
+
+                        let blob = null;
+                        try {
+                            const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+                            const canvas = document.createElement('canvas');
+                            canvas.width = Math.round(bitmap.width * scale);
+                            canvas.height = Math.round(bitmap.height * scale);
+                            canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                            blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+                        } catch (e) {
+                            blob = null;
+                        } finally {
+                            bitmap.close();
+                        }
+
+                        if (!blob) {
+                            this.fail(event, '写真の変換に失敗しました。もう一度お試しください。');
+                            return;
+                        }
+                        if (blob.size > 2 * 1024 * 1024) {
+                            this.fail(event, '写真の容量が大きすぎて送信できません。別の写真を選ぶか、撮り直してください。');
+                            return;
+                        }
+
                         const resized = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
                         this.uploading = true;
-                        $wire.upload('photo', resized, () => { this.uploading = false }, () => { this.uploading = false });
+                        $wire.upload(
+                            'photo',
+                            resized,
+                            () => { this.uploading = false },
+                            () => {
+                                this.uploading = false;
+                                this.error = '写真のアップロードに失敗しました。もう一度お試しください。';
+                            }
+                        );
+                    },
+                    fail(event, message) {
+                        this.error = message;
+                        event.target.value = '';
+                        $wire.$set('photo', null);
                     }
                 }"
             >
@@ -181,6 +294,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                     @change="resize($event)"
                     class="mt-2 block w-full text-sm"
                 />
+                <flux:text x-show="error" x-text="error" x-cloak class="text-red-500"></flux:text>
                 @error('photo') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
             </div>
 
@@ -195,41 +309,22 @@ new #[Layout('components.layouts.app')] class extends Component {
                 <flux:select.option value="other">その他</flux:select.option>
             </flux:select>
 
-            <div
-                x-data="{ status: 'loading', message: '現在地を取得しています...' }"
-                x-init="
-                    if (!navigator.geolocation) {
-                        status = 'error';
-                        message = 'この端末では位置情報が使えません';
-                    } else {
-                        navigator.geolocation.getCurrentPosition(
-                            (pos) => {
-                                status = 'ok';
-                                message = '現在地を取得しました';
-                                $wire.setLocation(pos.coords.latitude, pos.coords.longitude);
-                            },
-                            () => {
-                                status = 'error';
-                                message = '現在地を取得できませんでした。位置情報の許可を確認してください';
-                            },
-                            { enableHighAccuracy: true, timeout: 15000 }
-                        );
-                    }
-                "
-            >
+            <div>
                 <input type="hidden" name="latitude" wire:model="latitude">
                 <input type="hidden" name="longitude" wire:model="longitude">
                 <p
-                    x-text="message"
+                    x-text="locationMessage"
                     class="text-sm"
-                    :class="status === 'error' ? 'text-red-500' : (status === 'ok' ? 'text-green-600' : 'text-zinc-500')"
+                    :class="locationStatus === 'error' ? 'text-red-500' : (locationStatus === 'ok' ? 'text-green-600' : 'text-zinc-500')"
                 ></p>
             </div>
 
             <flux:button type="submit" variant="primary" class="w-full"
                 :disabled="$latitude === null || $longitude === null"
+                x-bind:disabled="locationStatus !== 'ok' || $wire.latitude === null || $wire.longitude === null"
                 wire:loading.attr="disabled" wire:target="save,photo">
-                <span wire:loading.remove wire:target="save">送信する</span>
+                <span wire:loading.remove wire:target="save,photo">送信する</span>
+                <span wire:loading wire:target="photo">写真を送信中...</span>
                 <span wire:loading wire:target="save">読み取り中...</span>
             </flux:button>
 
@@ -256,6 +351,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                     <flux:text class="text-amber-600">{{ $notice }}</flux:text>
                 @endif
 
+                @error('photo') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
                 @error('rows') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
 
                 @foreach ($rows as $i => $row)
