@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\VendingMachineController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
@@ -16,6 +17,8 @@ Route::view('map', 'map')
     ->name('map');
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('api/vending-machines', VendingMachineController::class);
+
     Route::redirect('settings', 'settings/profile');
 
     Volt::route('settings/profile', 'settings.profile')->name('settings.profile');
