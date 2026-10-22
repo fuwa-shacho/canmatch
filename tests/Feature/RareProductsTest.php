@@ -23,7 +23,7 @@ class RareProductsTest extends TestCase
     {
         $rare = $this->createProduct('開発用レア商品');
         $common = $this->createProduct('開発用通常商品');
-        $unavailable = $this->createProduct('開発用未販売商品');
+        $this->createProduct('開発用未販売商品');
 
         foreach (range(1, 3) as $index) {
             $this->attach($rare, $this->createMachine($index), 120 + $index);
@@ -39,11 +39,14 @@ class RareProductsTest extends TestCase
         $response
             ->assertOk()
             ->assertSee('開発用レア商品')
-            ->assertSee('3台')
+            ->assertViewHas('products', function ($products) use ($rare): bool {
+                $rareProduct = $products->firstWhere('id', $rare->id);
+
+                return $rareProduct !== null
+                    && $rareProduct->vending_machines_count === 3;
+            })
             ->assertDontSee('開発用通常商品')
             ->assertDontSee('開発用未販売商品');
-
-        $this->assertNotNull($unavailable);
     }
 
     public function test_hot_and_cold_rows_on_the_same_machine_count_as_one_machine(): void
