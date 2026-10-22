@@ -165,6 +165,18 @@ class QuestionAnswererTest extends TestCase
 
         $this->assertSame('fallback', $result['status']);
         $this->assertSame('rate_limit', $result['error_reason']);
+        $this->assertSame(QuestionAnswerer::QUOTA_NOTICE, $result['notice']);
+        $this->assertSame([120, 160], array_column($result['rows'], 'price'));
+    }
+
+    public function test_other_generation_failures_use_the_general_notice(): void
+    {
+        $this->fakeCloudflare($this->searchMatches(), null, 500);
+
+        $result = $this->answer();
+
+        $this->assertSame('fallback', $result['status']);
+        $this->assertSame('request_failed', $result['error_reason']);
         $this->assertSame(QuestionAnswerer::FALLBACK_NOTICE, $result['notice']);
         $this->assertSame([120, 160], array_column($result['rows'], 'price'));
     }
