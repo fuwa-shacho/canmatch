@@ -175,7 +175,12 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     public function selectCandidate(int $index, int $productId): void
     {
-        $candidate = collect($this->rows[$index]['candidates'] ?? [])->firstWhere('id', $productId);
+        if (! isset($this->rows[$index])) {
+            return;
+        }
+
+        $candidate = collect($this->matchFor((string) ($this->rows[$index]['name'] ?? ''))['candidates'])
+            ->firstWhere('id', $productId);
 
         // クライアントから来たIDを信用せず、サーバーが出した候補の中にあるものだけ受け付ける
         if ($candidate === null) {
@@ -252,7 +257,28 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.name' => 'required|string|max:100',
             'rows.*.price' => 'required|integer|min:0|max:100000',
             'rows.*.temperature' => 'required|in:hot,cold',
-            'rows.*.product_id' => 'nullable|integer|exists:products,id',
+            'rows.*.product_id' => [
+                'nullable',
+                'integer',
+                'exists:products,id',
+                function ($attribute, $value, $fail): void {
+                    if ($value === null) {
+                        return;
+                    }
+
+                    $index = (int) explode('.', $attribute)[1];
+                    $match = $this->matchFor((string) ($this->rows[$index]['name'] ?? ''));
+                    $validProductIds = array_column($match['candidates'], 'id');
+
+                    if ($match['product_id'] !== null) {
+                        $validProductIds[] = $match['product_id'];
+                    }
+
+                    if (! in_array((int) $value, $validProductIds, true)) {
+                        $fail('選択した商品を確認できません。候補から選び直してください。');
+                    }
+                },
+            ],
         ], [
             'rows.required' => '商品を1つ以上入力してください',
             'rows.min' => '商品を1つ以上入力してください',
@@ -441,32 +467,31 @@ new #[Layout('components.layouts.app')] class extends Component {
                             </flux:select>
                         </div>
                         <flux:button size="sm" variant="ghost" class="mt-2" wire:click="removeRow({{ $i }})">この行を削除</flux:button>
+                        <div class="mt-2 flex flex-col gap-1">
+                            @if (in_array($row['link'], ['auto', 'manual'], true))
+                                <flux:text>
+                                    紐づけ: {{ $row['product_name'] }}
+                                    ({{ $row['volume_ml'] ? $row['volume_ml'].'ml' : '容量未登録' }})
+                                </flux:text>
+                                <div>
+                                    <flux:button size="xs" variant="ghost" wire:click="unlinkProduct({{ $i }})">新しい商品にする</flux:button>
+                                </div>
+                            @else
+                                @if ($row['candidates'])
+                                    <flux:text>近い商品があります。選ぶと紐づけます。</flux:text>
+                                    <div class="flex flex-wrap gap-2">
+                                        @foreach ($row['candidates'] as $c)
+                                            <flux:button size="xs" wire:click="selectCandidate({{ $i }}, {{ $c['id'] }})">
+                                                {{ $c['name'] }}({{ $c['volume_ml'] ? $c['volume_ml'].'ml' : '容量未登録' }})
+                                            </flux:button>
+                                        @endforeach
+                                    </div>
+                                @endif
+                                <flux:text>選ばない場合は新しい商品として登録されます(容量は空)。</flux:text>
+                            @endif
+                        </div>
                     </div>
                 @endforeach
-
-                <div class="mt-2 flex flex-col gap-1">
-                    @if (in_array($row['link'], ['auto', 'manual'], true))
-                        <flux:text>
-                            紐づけ: {{ $row['product_name'] }}
-                            ({{ $row['volume_ml'] ? $row['volume_ml'].'ml' : '容量未登録' }})
-                        </flux:text>
-                        <div>
-                            <flux:button size="xs" variant="ghost" wire:click="unlinkProduct({{ $i }})">新しい商品にする</flux:button>
-                        </div>
-                    @else
-                        @if ($row['candidates'])
-                            <flux:text>近い商品があります。選ぶと紐づけます。</flux:text>
-                            <div class="flex flex-wrap gap-2">
-                                @foreach ($row['candidates'] as $c)
-                                    <flux:button size="xs" wire:click="selectCandidate({{ $i }}, {{ $c['id'] }})">
-                                        {{ $c['name'] }}({{ $c['volume_ml'] ? $c['volume_ml'].'ml' : '容量未登録' }})
-                                    </flux:button>
-                                @endforeach
-                            </div>
-                        @endif
-                        <flux:text>選ばない場合は新しい商品として登録されます(容量は空)。</flux:text>
-                    @endif
-                </div>
 
                 <flux:button wire:click="addRow">行を追加する</flux:button>
 
