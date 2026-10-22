@@ -36,6 +36,8 @@ new #[Layout('components.layouts.app')] class extends Component {
                 async resize(event) {
                     const file = event.target.files[0];
                     if (!file) return;
+                    this.uploading = true;
+                    event.target.form.querySelector('button[type=submit]').disabled = true;
                     this.error = null;
 
                     let bitmap;
@@ -70,18 +72,22 @@ new #[Layout('components.layouts.app')] class extends Component {
                     }
 
                     const resized = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-                    this.uploading = true;
                     $wire.upload(
                         'photo',
                         resized,
-                        () => { this.uploading = false },
+                        () => { this.finish(event) },
                         () => {
-                            this.uploading = false;
+                            this.finish(event);
                             this.error = '写真のアップロードに失敗しました。もう一度お試しください。';
                         }
                     );
                 },
+                finish(event) {
+                    this.uploading = false;
+                    event.target.form.querySelector('button[type=submit]').disabled = false;
+                },
                 fail(event, message) {
+                    this.finish(event);
                     this.error = message;
                     event.target.value = '';
                     $wire.$set('photo', null);
