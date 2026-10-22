@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\VendingMachine;
-use App\Services\Rag\QuestionAnswerer;
+use App\Services\Rag\QuestionDesk;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
@@ -20,7 +20,7 @@ new #[Layout('components.layouts.app')] class extends Component {
     /** 最後に質問した文章(回答の上に表示する) */
     public string $asked = '';
 
-    /** QuestionAnswerer::answer() の結果 */
+    /** QuestionDesk::ask() の結果 */
     public ?array $result = null;
 
     /** 例のボタンを押したとき(番号で受け取り、文章は画面から受け取らない) */
@@ -40,7 +40,7 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->validate();
 
         $this->asked = $this->question;
-        $this->result = app(QuestionAnswerer::class)->answer($this->asked);
+        $this->result = app(QuestionDesk::class)->ask(auth()->user(), $this->asked);
     }
 
     public function with(): array
@@ -61,6 +61,8 @@ new #[Layout('components.layouts.app')] class extends Component {
 
         return [
             'examples' => self::EXAMPLES,
+            'remaining' => $this->result['remaining'] ?? QuestionDesk::remainingToday(auth()->user()),
+            'limit' => QuestionDesk::dailyLimit(),
             'rows' => $rows,
             'machines' => $machines,
             'markers' => $markers,
@@ -141,6 +143,8 @@ new #[Layout('components.layouts.app')] class extends Component {
                 @endforeach
             </div>
         </div>
+
+        <flux:text class="text-sm">今日はあと {{ $remaining }} 回質問できます(1日 {{ $limit }} 回まで)。</flux:text>
 
         <flux:button type="submit" variant="primary" class="w-full" wire:loading.attr="disabled" wire:target="ask,askExample">
             <span wire:loading.remove wire:target="ask,askExample">質問する</span>

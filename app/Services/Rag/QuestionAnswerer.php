@@ -27,6 +27,9 @@ class QuestionAnswerer
 
     public const FALLBACK_NOTICE = '条件での絞り込みができませんでした。質問に近い商品を、価格の安い順に表示します。';
 
+    /** 生成の無料枠を使い切ったとき(Issue 68:枠を使い切ったら根拠の一覧だけを表示する) */
+    public const QUOTA_NOTICE = '今日の AI の無料枠を使い切ったため、条件での絞り込みができませんでした。質問に近い商品を、価格の安い順に表示します。';
+
     public function __construct(
         private EvidenceRetriever $retriever,
         private AnswerGenerator $generator,
@@ -83,10 +86,12 @@ class QuestionAnswerer
         try {
             $generated = $this->generator->generate($question, $evidence);
         } catch (RagGenerationFailedException $e) {
+            $notice = $e->reason === 'rate_limit' ? self::QUOTA_NOTICE : self::FALLBACK_NOTICE;
+
             return $this->result($base + [
                 'status' => 'fallback',
-                'answer' => self::FALLBACK_NOTICE,
-                'notice' => self::FALLBACK_NOTICE,
+                'answer' => $notice,
+                'notice' => $notice,
                 'rows' => $evidence,
                 'error_reason' => $e->reason,
             ]);
