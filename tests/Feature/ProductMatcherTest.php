@@ -60,4 +60,26 @@ class ProductMatcherTest extends TestCase
 
         $this->assertTrue($result['candidates']->isEmpty());
     }
+
+    public function test_商品マスタを部分一致で探し名前と容量の順に並べる(): void
+    {
+        Product::create(['name' => '綾鷹', 'volume_ml' => 650]);
+        Product::create(['name' => '綾鷹', 'volume_ml' => 525]);
+        Product::create(['name' => '綾鷹 茶葉のあまみ', 'volume_ml' => 525]);
+        Product::create(['name' => 'コカ・コーラ', 'volume_ml' => 500]);
+
+        $found = app(ProductMatcher::class)->search(' 綾鷹 ');
+
+        $this->assertSame(
+            ['綾鷹 525', '綾鷹 650', '綾鷹 茶葉のあまみ 525'],
+            $found->map(fn ($p) => $p->name.' '.$p->volume_ml)->all(),
+        );
+    }
+
+    public function test_1文字では探さない(): void
+    {
+        Product::create(['name' => 'お茶']);
+
+        $this->assertTrue(app(ProductMatcher::class)->search('茶')->isEmpty());
+    }
 }

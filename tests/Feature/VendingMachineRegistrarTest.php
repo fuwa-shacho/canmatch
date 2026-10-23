@@ -52,6 +52,50 @@ class VendingMachineRegistrarTest extends TestCase
         $this->assertDatabaseHas('products', ['name' => '珍しいジュース', 'volume_ml' => null]);
     }
 
+    public function test_新しい商品は入力した容量で作られる(): void
+    {
+        app(VendingMachineRegistrar::class)->register($this->attributes(), [
+            ['name' => '綾鷹', 'price' => 140, 'temperature' => 'cold', 'product_id' => null, 'new_volume_ml' => '525'],
+        ]);
+
+        $this->assertDatabaseHas('products', ['name' => '綾鷹', 'volume_ml' => 525]);
+    }
+
+    public function test_同じ名前と容量の商品があれば新しく作らずに使う(): void
+    {
+        $existing = Product::create(['name' => '綾鷹', 'volume_ml' => 525]);
+
+        app(VendingMachineRegistrar::class)->register($this->attributes(), [
+            ['name' => ' 綾鷹 ', 'price' => 140, 'temperature' => 'cold', 'product_id' => null, 'new_volume_ml' => 525],
+        ]);
+
+        $this->assertSame(1, Product::count());
+        $this->assertDatabaseHas('machine_products', ['product_id' => $existing->id, 'price' => 140]);
+    }
+
+    public function test_容量違いは別の商品として作る(): void
+    {
+        Product::create(['name' => '綾鷹', 'volume_ml' => 650]);
+
+        app(VendingMachineRegistrar::class)->register($this->attributes(), [
+            ['name' => '綾鷹', 'price' => 140, 'temperature' => 'cold', 'product_id' => null, 'new_volume_ml' => 525],
+        ]);
+
+        $this->assertSame(2, Product::where('name', '綾鷹')->count());
+    }
+
+    public function test_容量不明の同名商品があれば新しく作らずに使う(): void
+    {
+        $existing = Product::create(['name' => '珍しいジュース']);
+
+        app(VendingMachineRegistrar::class)->register($this->attributes(), [
+            ['name' => '珍しいジュース', 'price' => 120, 'temperature' => 'cold', 'product_id' => null],
+        ]);
+
+        $this->assertSame(1, Product::count());
+        $this->assertDatabaseHas('machine_products', ['product_id' => $existing->id]);
+    }
+
     public function test_同じ新商品名の行は商品を1つだけ作る(): void
     {
         app(VendingMachineRegistrar::class)->register($this->attributes(), [
