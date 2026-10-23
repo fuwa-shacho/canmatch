@@ -16,7 +16,7 @@
                 </div>
                 <div>
                     <dt class="text-sm text-neutral-500 dark:text-neutral-400">登録者</dt>
-                    <dd>{{ $vendingMachine->user?->name ?? '登録者不明' }}</dd>
+                    <dd>{{ $vendingMachine->user?->name ?? '退会済みユーザー' }}</dd>
                 </div>
             </dl>
         </section>
