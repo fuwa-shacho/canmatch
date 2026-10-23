@@ -18,6 +18,21 @@
                     <dt class="text-sm text-neutral-500 dark:text-neutral-400">登録者</dt>
                     <dd>{{ $vendingMachine->user?->name ?? '退会済みユーザー' }}</dd>
                 </div>
+                <div class="sm:col-span-2">
+                    <dt class="text-sm text-neutral-500 dark:text-neutral-400">情報の鮮度</dt>
+                    <dd
+                        @class([
+                            'mt-1 inline-flex rounded-full px-3 py-1 text-sm font-medium',
+                            'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' => $daysSinceConfirmation >= 30,
+                            'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100' => $daysSinceConfirmation < 30,
+                        ])
+                    >
+                        {{ $daysSinceConfirmation }}日前の情報
+                        @if ($daysSinceConfirmation >= 30)
+                            （古い情報の可能性があります）
+                        @endif
+                    </dd>
+                </div>
             </dl>
         </section>
 

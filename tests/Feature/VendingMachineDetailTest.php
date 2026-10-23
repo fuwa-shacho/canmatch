@@ -122,15 +122,56 @@ class VendingMachineDetailTest extends TestCase
             ->assertNotFound();
     }
 
-    private function createMachine(?User $owner = null, ?string $maker = null): VendingMachine
+    public function test_recent_information_displays_the_number_of_days_since_confirmation(): void
     {
+        $this->travelTo('2026-10-20 12:00:00');
+        $viewer = User::factory()->create();
+        $machine = $this->createMachine(lastConfirmedAt: '2026-10-13 23:59:59');
+
+        $this->actingAs($viewer)
+            ->get(route('vending-machines.show', $machine))
+            ->assertOk()
+            ->assertSee('7日前の情報')
+            ->assertDontSee('古い情報の可能性があります');
+    }
+
+    public function test_information_at_least_thirty_days_old_displays_a_warning(): void
+    {
+        $this->travelTo('2026-10-20 12:00:00');
+        $viewer = User::factory()->create();
+        $machine = $this->createMachine(lastConfirmedAt: '2026-09-20 23:59:59');
+
+        $this->actingAs($viewer)
+            ->get(route('vending-machines.show', $machine))
+            ->assertOk()
+            ->assertSee('30日前の情報')
+            ->assertSee('古い情報の可能性があります');
+    }
+
+    public function test_future_confirmation_date_is_not_displayed_as_a_negative_age(): void
+    {
+        $this->travelTo('2026-10-20 12:00:00');
+        $viewer = User::factory()->create();
+        $machine = $this->createMachine(lastConfirmedAt: '2026-10-21 00:00:00');
+
+        $this->actingAs($viewer)
+            ->get(route('vending-machines.show', $machine))
+            ->assertOk()
+            ->assertSee('0日前の情報');
+    }
+
+    private function createMachine(
+        ?User $owner = null,
+        ?string $maker = null,
+        string $lastConfirmedAt = '2026-10-20 00:00:00'
+    ): VendingMachine {
         return VendingMachine::create([
             'latitude' => '33.5890000',
             'longitude' => '130.3950000',
             'maker' => $maker,
             'photo_path' => 'vending-machines/development/detail.jpg',
             'user_id' => $owner?->id,
-            'last_confirmed_at' => '2026-10-20 00:00:00',
+            'last_confirmed_at' => $lastConfirmedAt,
         ]);
     }
 }

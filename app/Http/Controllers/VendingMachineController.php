@@ -14,6 +14,11 @@ class VendingMachineController extends Controller
             'products' => fn ($query) => $query->orderBy('machine_products.id'),
         ]);
 
-        return view('vending-machines.show', compact('vendingMachine'));
+        $daysSinceConfirmation = max(0, (int) $vendingMachine->last_confirmed_at
+            ->copy()
+            ->startOfDay()
+            ->diffInDays(now()->startOfDay(), false));
+
+        return view('vending-machines.show', compact('vendingMachine', 'daysSinceConfirmation'));
     }
 }
