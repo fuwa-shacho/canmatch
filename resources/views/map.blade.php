@@ -163,8 +163,9 @@
                     parameters.set('product_name', productName);
                 }
 
-                const endpoint = parameters.size > 0
-                    ? `/api/vending-machines?${parameters.toString()}`
+                const query = parameters.toString();
+                const endpoint = query
+                    ? `/api/vending-machines?${query}`
                     : '/api/vending-machines';
 
                 markerRequest?.abort();

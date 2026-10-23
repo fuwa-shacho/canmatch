@@ -89,6 +89,19 @@ class VectorIndex
     }
 
     /**
+     * 索引に入っている件数を数える
+     *
+     * 登録の反映には数秒〜1分かかるので、登録した直後は少ない数が返ることがある。
+     */
+    public function count(): int
+    {
+        return (int) $this->http()
+            ->get($this->url('info'))
+            ->throw()
+            ->json('result.vectorCount', 0);
+    }
+
+    /**
      * IDを指定して消す
      *
      * @param  array<int, string|int>  $ids
