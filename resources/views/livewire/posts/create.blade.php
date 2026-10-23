@@ -112,7 +112,7 @@ new #[Layout('components.layouts.app')] class extends Component {
             ->map(fn ($p) => $this->newRow([
                 'name' => $p['name'] ?? '',
                 'price' => $p['price'],
-                'temperature' => $p['temperature'],
+                'temperature' => $p['temperature'] ?? '',
             ]))
             ->values()
             ->all();
@@ -135,7 +135,7 @@ new #[Layout('components.layouts.app')] class extends Component {
             'id' => (string) Str::uuid(),
             'name' => '',
             'price' => null,
-            'temperature' => null,
+            'temperature' => '',
         ], $attrs);
 
         return array_merge($row, $this->matchFor((string) $row['name']));
@@ -339,7 +339,7 @@ new #[Layout('components.layouts.app')] class extends Component {
         <form
             wire:submit="save"
             class="mt-6 flex max-w-md flex-col gap-6"
-            x-data="{ locationStatus: 'loading', locationMessage: '現在地を取得しています...' }"
+            x-data="{ locationStatus: 'loading', locationMessage: '現在地を取得しています...', uploading: false }"
             x-init="
                 if (!navigator.geolocation) {
                     locationStatus = 'error';
@@ -367,11 +367,11 @@ new #[Layout('components.layouts.app')] class extends Component {
         >
             <div
                 x-data="{
-                    uploading: false,
                     error: null,
                     async resize(event) {
                         const file = event.target.files[0];
                         if (!file) return;
+                        uploading = true;
                         this.error = null;
 
                         let bitmap;
@@ -406,18 +406,19 @@ new #[Layout('components.layouts.app')] class extends Component {
                         }
 
                         const resized = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-                        this.uploading = true;
+                        uploading = true;
                         $wire.upload(
                             'photo',
                             resized,
-                            () => { this.uploading = false },
+                            () => { uploading = false },
                             () => {
-                                this.uploading = false;
+                                uploading = false;
                                 this.error = '写真のアップロードに失敗しました。もう一度お試しください。';
                             }
                         );
                     },
                     fail(event, message) {
+                        uploading = false;
                         this.error = message;
                         event.target.value = '';
                         $wire.$set('photo', null);
@@ -459,7 +460,7 @@ new #[Layout('components.layouts.app')] class extends Component {
 
             <flux:button type="submit" variant="primary" class="w-full"
                 :disabled="$latitude === null || $longitude === null"
-                x-bind:disabled="locationStatus !== 'ok' || $wire.latitude === null || $wire.longitude === null"
+                x-bind:disabled="uploading || locationStatus !== 'ok' || $wire.latitude === null || $wire.longitude === null"
                 wire:loading.attr="disabled" wire:target="save,photo">
                 <span wire:loading.remove wire:target="save,photo">送信する</span>
                 <span wire:loading wire:target="photo">写真を送信中...</span>
@@ -493,7 +494,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                 @error('rows') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
 
                 @foreach ($rows as $i => $row)
-                    <div wire:key="row-{{ $row['id'] }}" class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                    <div wire:key="row-{{ $row['id'] }}-{{ $i }}" class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
                         <flux:input wire:model="rows.{{ $i }}.name" label="商品名" />
                         <div class="mt-2 grid grid-cols-2 gap-2">
                             <flux:input wire:model="rows.{{ $i }}.price" label="価格(円)" type="number" inputmode="numeric" min="0" />
