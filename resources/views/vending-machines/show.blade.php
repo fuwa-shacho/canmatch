@@ -16,7 +16,7 @@
                 </div>
                 <div>
                     <dt class="text-sm text-neutral-500 dark:text-neutral-400">登録者</dt>
-                    <dd>{{ $vendingMachine->user?->name ?? '登録者不明' }}</dd>
+                    <dd>{{ $vendingMachine->user?->name ?? '退会済みユーザー' }}</dd>
                 </div>
                 <div class="sm:col-span-2">
                     <dt class="text-sm text-neutral-500 dark:text-neutral-400">情報の鮮度</dt>
@@ -40,6 +40,9 @@
             <h2 class="text-lg font-semibold">販売商品</h2>
 
             @forelse ($vendingMachine->products as $product)
+                @php
+                    $pricePer100Ml = $product->pivot->pricePer100Ml($product->volume_ml);
+                @endphp
                 <article class="mt-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-700">
                     <div class="flex items-start justify-between gap-4">
                         <div>
@@ -55,6 +58,11 @@
                                     default => '不明',
                                 } }}
                             </p>
+                            @if ($pricePer100Ml !== null)
+                                <p class="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                    100mlあたり{{ number_format($pricePer100Ml, $pricePer100Ml === floor($pricePer100Ml) ? 0 : 1) }}円
+                                </p>
+                            @endif
                         </div>
                         <p class="whitespace-nowrap text-lg font-bold">
                             {{ number_format($product->pivot->price) }}円
