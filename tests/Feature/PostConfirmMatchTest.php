@@ -58,8 +58,8 @@ class PostConfirmMatchTest extends TestCase
 
     public function test_各商品行にそれぞれの候補が表示される(): void
     {
-        Product::create(['name' => '伊右衛門 650ml', 'volume_ml' => 650]);
-        Product::create(['name' => 'コカ・コーラ 350ml', 'volume_ml' => 350]);
+        $tea = Product::create(['name' => '伊右衛門 650ml', 'volume_ml' => 650]);
+        $cola = Product::create(['name' => 'コカ・コーラ 350ml', 'volume_ml' => 350]);
 
         Volt::test('posts.create')
             ->call('addRow')
@@ -74,7 +74,18 @@ class PostConfirmMatchTest extends TestCase
             ->assertSet('rows.2.candidates', [])
             ->assertSet('rows.2.link', 'new')
             ->assertSee('伊右衛門 650ml')
-            ->assertSee('コカ・コーラ 350ml');
+            ->assertSee('コカ・コーラ 350ml')
+            ->call('selectCandidate', 0, $tea->id)
+            ->assertSet('rows.0.link', 'manual')
+            ->assertSet('rows.0.product_id', $tea->id)
+            ->call('selectCandidate', 1, $cola->id)
+            ->assertSet('rows.1.link', 'manual')
+            ->assertSet('rows.1.product_id', $cola->id)
+            ->call('unlinkProduct', 0)
+            ->assertSet('rows.0.link', 'new')
+            ->assertSet('rows.0.product_id', null)
+            ->assertSet('rows.1.link', 'manual')
+            ->assertSet('rows.1.product_id', $cola->id);
     }
 
     public function test_一致しない商品は新規扱いで容量は空(): void
