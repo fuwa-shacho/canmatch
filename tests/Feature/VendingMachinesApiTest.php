@@ -170,6 +170,44 @@ class VendingMachinesApiTest extends TestCase
             ->assertExactJson([]);
     }
 
+    public function test_product_search_includes_price_temperature_and_freshness_in_price_order(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->travelTo('2026-10-20 12:00:00');
+
+        $machineId = $this->createVendingMachine(
+            '価格比較用メーカー',
+            '33.5903547',
+            '130.4017155',
+            '2026-10-20 06:00:00'
+        );
+        $productId = $this->createProduct('開発用ドクターペッパー');
+        $this->attachProduct($machineId, $productId, 'hot', 170, '2026-10-10 06:00:00');
+        $this->attachProduct($machineId, $productId, 'cold', 150, '2026-10-19 06:00:00');
+
+        $machine = $this->getJson('/api/vending-machines?product_name='.urlencode('ドクターペッパー'))
+            ->assertOk()
+            ->json('0');
+
+        $this->assertSame([150, 170], array_column($machine['matched_products'], 'price'));
+        $this->assertSame(['cold', 'hot'], array_column($machine['matched_products'], 'temperature'));
+        $this->assertSame([1, 10], array_column($machine['matched_products'], 'days_ago'));
+        $this->assertSame(
+            [
+                'machine_product_id',
+                'product_id',
+                'product_name',
+                'volume_ml',
+                'price',
+                'temperature',
+                'recorded_at',
+                'days_ago',
+            ],
+            array_keys($machine['matched_products'][0])
+        );
+    }
+
     public function test_product_name_query_must_be_a_string_within_the_length_limit(): void
     {
         $this->actingAs(User::factory()->create());
@@ -217,14 +255,19 @@ class VendingMachinesApiTest extends TestCase
         ]);
     }
 
-    private function attachProduct(int $machineId, int $productId, ?string $temperature): void
-    {
+    private function attachProduct(
+        int $machineId,
+        int $productId,
+        ?string $temperature,
+        int $price = 150,
+        string $recordedAt = '2026-10-18 06:00:00'
+    ): void {
         DB::table('machine_products')->insert([
             'vending_machine_id' => $machineId,
             'product_id' => $productId,
-            'price' => 150,
+            'price' => $price,
             'temperature' => $temperature,
-            'recorded_at' => '2026-10-18 06:00:00',
+            'recorded_at' => $recordedAt,
         ]);
     }
 }

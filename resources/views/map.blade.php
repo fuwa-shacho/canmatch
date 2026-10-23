@@ -103,19 +103,53 @@
                     return;
                 }
 
-                summary.textContent = machines.length > 0
-                    ? `「${productName}」を扱う自販機: ${machines.length}件`
+                const rows = machines
+                    .flatMap((machine) => (machine.matched_products ?? []).map((product) => ({ machine, product })))
+                    .sort((left, right) =>
+                        left.product.price - right.product.price ||
+                        left.machine.id - right.machine.id ||
+                        left.product.machine_product_id - right.product.machine_product_id
+                    );
+                const lowestPrice = rows[0]?.product.price;
+
+                summary.textContent = rows.length > 0
+                    ? `「${productName}」の販売情報: ${rows.length}件（自販機${machines.length}台）`
                     : `「${productName}」を扱う自販機は見つかりませんでした。`;
 
-                for (const machine of machines) {
+                for (const { machine, product } of rows) {
                     const item = document.createElement('li');
                     const link = document.createElement('a');
+                    const heading = document.createElement('div');
+                    const price = document.createElement('p');
+                    const details = document.createElement('p');
+                    const isLowest = product.price === lowestPrice;
+                    const temperatureLabels = {
+                        hot: '温',
+                        cold: '冷'
+                    };
 
-                    item.className = 'rounded-lg border border-neutral-200 p-3 dark:border-neutral-700';
+                    item.className = isLowest
+                        ? 'rounded-lg border-2 border-amber-400 bg-amber-50 p-3 dark:bg-amber-950/30'
+                        : 'rounded-lg border border-neutral-200 p-3 dark:border-neutral-700';
                     link.href = `/vending-machines/${encodeURIComponent(machine.id)}`;
-                    link.textContent = `${machine.maker || 'メーカー不明'}（商品数: ${machine.product_count}件）`;
+                    link.textContent = machine.maker || 'メーカー不明';
                     link.className = 'font-semibold text-blue-700 hover:underline dark:text-blue-300';
-                    item.append(link);
+                    heading.append(link);
+
+                    if (isLowest) {
+                        const badge = document.createElement('span');
+                        badge.textContent = '最安';
+                        badge.className = 'ml-2 rounded bg-amber-400 px-2 py-1 text-xs font-bold text-amber-950';
+                        heading.append(badge);
+                    }
+
+                    price.textContent = `${product.product_name}: ${product.price}円`;
+                    price.className = 'mt-1 font-bold';
+                    details.textContent = `${temperatureLabels[product.temperature] ?? '温冷不明'} / ${product.days_ago}日前の情報`;
+                    details.className = product.days_ago >= 30
+                        ? 'mt-1 text-sm font-semibold text-red-700 dark:text-red-300'
+                        : 'mt-1 text-sm text-neutral-600 dark:text-neutral-300';
+                    item.append(heading, price, details);
                     results.append(item);
                 }
             };

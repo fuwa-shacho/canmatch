@@ -27,22 +27,55 @@ class VendingMachineController extends Controller
             )
             ->when(
                 $productName !== '',
-                fn ($query) => $query->whereHas(
-                    'products',
-                    fn ($products) => $products->whereLike('products.name', "%{$productName}%")
-                )
+                fn ($query) => $query
+                    ->whereHas(
+                        'products',
+                        fn ($products) => $products->whereLike('products.name', "%{$productName}%")
+                    )
+                    ->with([
+                        'products' => fn ($products) => $products
+                            ->select(['products.id', 'products.name', 'products.volume_ml'])
+                            ->whereLike('products.name', "%{$productName}%")
+                            ->orderBy('machine_products.price')
+                            ->orderBy('machine_products.id'),
+                    ])
             )
             ->orderBy('id')
             ->get();
 
-        $payload = $machines->map(fn (VendingMachine $machine): array => [
-            'id' => (int) $machine->id,
-            'latitude' => (float) $machine->latitude,
-            'longitude' => (float) $machine->longitude,
-            'maker' => $machine->maker,
-            'product_count' => (int) $machine->product_count,
-            'last_confirmed_at' => $machine->last_confirmed_at->utc()->toISOString(),
-        ]);
+        $payload = $machines->map(function (VendingMachine $machine) use ($productName): array {
+            $item = [
+                'id' => (int) $machine->id,
+                'latitude' => (float) $machine->latitude,
+                'longitude' => (float) $machine->longitude,
+                'maker' => $machine->maker,
+                'product_count' => (int) $machine->product_count,
+                'last_confirmed_at' => $machine->last_confirmed_at->utc()->toISOString(),
+            ];
+
+            if ($productName !== '') {
+                $item['matched_products'] = $machine->products->map(function ($product): array {
+                    $recordedAt = $product->pivot->recorded_at;
+                    $daysAgo = max(
+                        0,
+                        (int) $recordedAt->copy()->startOfDay()->diffInDays(now()->startOfDay(), false)
+                    );
+
+                    return [
+                        'machine_product_id' => (int) $product->pivot->id,
+                        'product_id' => (int) $product->id,
+                        'product_name' => $product->name,
+                        'volume_ml' => $product->volume_ml,
+                        'price' => (int) $product->pivot->price,
+                        'temperature' => $product->pivot->temperature,
+                        'recorded_at' => $recordedAt->utc()->toISOString(),
+                        'days_ago' => $daysAgo,
+                    ];
+                })->all();
+            }
+
+            return $item;
+        });
 
         return response()->json($payload->all());
     }
