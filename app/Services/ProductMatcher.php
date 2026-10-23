@@ -53,6 +53,30 @@ class ProductMatcher
         return ['product' => null, 'candidates' => $partial];
     }
 
+    /**
+     * 商品マスタを言葉で探す(確認画面で紐づけ先を選び直すときに使う)
+     *
+     * 部分一致で、名前・容量の順に並べて返す。
+     *
+     * @return Collection<int, Product>
+     */
+    public function search(string $keyword, int $limit = 8): Collection
+    {
+        $normalized = $this->normalize($keyword);
+
+        if (mb_strlen($normalized) < self::MIN_PARTIAL_LENGTH) {
+            return collect();
+        }
+
+        return Product::query()
+            ->whereRaw("name LIKE ? ESCAPE '!'", ['%'.$this->escapeLike($normalized).'%'])
+            ->orderBy('name')
+            ->orderBy('volume_ml')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+    }
+
     /** 全角英数・全角スペースを半角に、半角カナを全角に揃え、空白を整える */
     public function normalize(string $name): string
     {

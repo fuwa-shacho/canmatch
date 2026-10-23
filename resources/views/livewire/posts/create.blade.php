@@ -136,6 +136,10 @@ new #[Layout('components.layouts.app')] class extends Component {
             'name' => '',
             'price' => null,
             'temperature' => '',
+            'new_volume_ml' => null, // 新しい商品にするときの容量(ml)
+            'searching' => false,    // 商品マスタを探す欄を開いているか
+            'search' => '',
+            'search_results' => [],
         ], $attrs);
 
         return array_merge($row, $this->matchFor((string) $row['name']));
@@ -163,6 +167,12 @@ new #[Layout('components.layouts.app')] class extends Component {
     public function updatedRows($value, string $key): void
     {
         [$index, $field] = array_pad(explode('.', $key, 2), 2, null);
+
+        if ($field === 'search' && isset($this->rows[$index])) {
+            $this->rows[$index]['search_results'] = $this->searchProducts((string) $this->rows[$index]['search']);
+
+            return;
+        }
 
         if ($field !== 'name' || ! isset($this->rows[$index])) {
             return;
@@ -203,7 +213,74 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->rows[$index]['product_id'] = null;
         $this->rows[$index]['product_name'] = null;
         $this->rows[$index]['volume_ml'] = null;
+        $this->rows[$index]['new_volume_ml'] = null;
         $this->rows[$index]['link'] = 'new';
+    }
+
+    /**
+     * 商品マスタを探す欄を開く(最初は今の商品名で探す)
+     */
+    public function startSearch(int $index): void
+    {
+        if (! isset($this->rows[$index])) {
+            return;
+        }
+
+        $this->rows[$index]['searching'] = true;
+        $this->rows[$index]['search'] = (string) ($this->rows[$index]['name'] ?? '');
+        $this->rows[$index]['search_results'] = $this->searchProducts($this->rows[$index]['search']);
+    }
+
+    public function closeSearch(int $index): void
+    {
+        if (! isset($this->rows[$index])) {
+            return;
+        }
+
+        $this->rows[$index]['searching'] = false;
+        $this->rows[$index]['search_results'] = [];
+    }
+
+    /**
+     * 探した商品を選んで紐づける
+     *
+     * クライアントから来たIDは信用せず、サーバーで探し直した結果にあるものだけ受け付ける。
+     * 商品名も選んだ商品の名前にそろえる(登録前の照合で、選んだ商品が候補に入るようにするため)。
+     */
+    public function selectSearchResult(int $index, int $productId): void
+    {
+        if (! isset($this->rows[$index])) {
+            return;
+        }
+
+        $found = collect($this->searchProducts((string) ($this->rows[$index]['search'] ?? '')))
+            ->firstWhere('id', $productId);
+
+        if ($found === null) {
+            return;
+        }
+
+        $this->rows[$index] = array_merge($this->rows[$index], $this->matchFor($found['name']), [
+            'name' => $found['name'],
+            'product_id' => $found['id'],
+            'product_name' => $found['name'],
+            'volume_ml' => $found['volume_ml'],
+            'new_volume_ml' => null,
+            'link' => 'manual',
+            'searching' => false,
+            'search_results' => [],
+        ]);
+    }
+
+    /**
+     * @return array<int, array{id: int, name: string, volume_ml: ?int}>
+     */
+    protected function searchProducts(string $keyword): array
+    {
+        return app(ProductMatcher::class)->search($keyword)
+            ->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'volume_ml' => $p->volume_ml])
+            ->values()
+            ->all();
     }
 
     public function removeRow(int $index): void
@@ -265,6 +342,7 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.name' => 'required|string|max:100',
             'rows.*.price' => 'required|integer|min:0|max:100000',
             'rows.*.temperature' => 'required|in:hot,cold',
+            'rows.*.new_volume_ml' => 'nullable|integer|min:1|max:5000',
             'rows.*.product_id' => [
                 'nullable',
                 'integer',
@@ -301,7 +379,11 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.price.min' => '価格は0円以上にしてください',
             'rows.*.price.max' => '価格が大きすぎます',
             'rows.*.temperature.required' => '温冷を選んでください',
+            'rows.*.new_volume_ml.integer' => '容量は数字(ml)で入力してください',
+            'rows.*.new_volume_ml.min' => '容量は1ml以上にしてください',
+            'rows.*.new_volume_ml.max' => '容量が大きすぎます',
         ]);
+
 
         abort_if(
             $this->savedPath === null || $this->latitude === null || $this->longitude === null,
@@ -510,7 +592,8 @@ new #[Layout('components.layouts.app')] class extends Component {
                                     紐づけ: {{ $row['product_name'] }}
                                     ({{ $row['volume_ml'] ? $row['volume_ml'].'ml' : '容量未登録' }})
                                 </flux:text>
-                                <div>
+                                <div class="flex flex-wrap gap-2">
+                                    <flux:button size="xs" variant="ghost" wire:click="startSearch({{ $i }})">別の商品を選ぶ</flux:button>
                                     <flux:button size="xs" variant="ghost" wire:click="unlinkProduct({{ $i }})">新しい商品にする</flux:button>
                                 </div>
                             @else
@@ -524,7 +607,31 @@ new #[Layout('components.layouts.app')] class extends Component {
                                         @endforeach
                                     </div>
                                 @endif
-                                <flux:text>選ばない場合は新しい商品として登録されます(容量は空)。</flux:text>
+                                <flux:text>選ばない場合は新しい商品として登録されます。容量が分かれば入力してください(分からなければ空のままで大丈夫です)。</flux:text>
+                                <div class="flex flex-col items-start gap-2">
+                                    <div class="w-full">
+                                        <flux:input wire:model="rows.{{ $i }}.new_volume_ml" label="容量(ml)" type="number" inputmode="numeric" min="1" placeholder="例:525" />
+                                    </div>
+                                    <flux:button size="xs" variant="ghost" wire:click="startSearch({{ $i }})">商品マスタから探す</flux:button>
+                                </div>
+                            @endif
+
+                            @if ($row['searching'] ?? false)
+                                <div class="mt-2 rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
+                                    <flux:input wire:model.live.debounce.300ms="rows.{{ $i }}.search" label="商品マスタを探す" placeholder="例:綾鷹" />
+                                    @if (($row['search_results'] ?? []) === [])
+                                        <flux:text class="mt-2">見つかりません。2文字以上で探してください。</flux:text>
+                                    @else
+                                        <div class="mt-2 flex flex-wrap gap-2">
+                                            @foreach ($row['search_results'] as $r)
+                                                <flux:button size="xs" wire:click="selectSearchResult({{ $i }}, {{ $r['id'] }})">
+                                                    {{ $r['name'] }}({{ $r['volume_ml'] ? $r['volume_ml'].'ml' : '容量未登録' }})
+                                                </flux:button>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                    <flux:button size="xs" variant="ghost" class="mt-2" wire:click="closeSearch({{ $i }})">閉じる</flux:button>
+                                </div>
                             @endif
                         </div>
                     </div>
