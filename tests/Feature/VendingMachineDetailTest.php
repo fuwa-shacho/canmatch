@@ -90,7 +90,7 @@ class VendingMachineDetailTest extends TestCase
             ->get(route('vending-machines.show', $machine))
             ->assertOk()
             ->assertSee('メーカー不明')
-            ->assertSee('登録者不明')
+            ->assertSee('退会済みユーザー')
             ->assertSee('商品情報はまだ登録されていません。');
     }
 
