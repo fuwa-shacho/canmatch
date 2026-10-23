@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\VendingMachineController as ApiVendingMachineController;
 use App\Http\Controllers\RankingController;
 use App\Http\Controllers\RareProductController;
 use App\Http\Controllers\VendingMachineController;
@@ -23,6 +24,8 @@ Route::get('vending-machines/{vendingMachine}', VendingMachineController::class)
     ->name('vending-machines.show');
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('api/vending-machines', ApiVendingMachineController::class);
+
     Route::redirect('settings', 'settings/profile');
     Volt::route('posts/create', 'posts.create')->name('posts.create');
 
