@@ -172,6 +172,8 @@ class VendingMachinesApiTest extends TestCase
 
     public function test_product_search_includes_price_temperature_and_freshness_in_price_order(): void
     {
+        $this->actingAs(User::factory()->create());
+
         $this->travelTo('2026-10-20 12:00:00');
 
         $machineId = $this->createVendingMachine(
