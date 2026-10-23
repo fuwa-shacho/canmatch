@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\RankingController;
 use App\Http\Controllers\RareProductController;
+use App\Http\Controllers\VendingMachineController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
@@ -16,6 +17,10 @@ Route::view('dashboard', 'dashboard')
 Route::view('map', 'map')
     ->middleware(['auth'])
     ->name('map');
+
+Route::get('vending-machines/{vendingMachine}', VendingMachineController::class)
+    ->middleware(['auth'])
+    ->name('vending-machines.show');
 
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
