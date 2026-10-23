@@ -8,6 +8,12 @@
             aria-live="polite"
             class="hidden rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
         ></p>
+        <p
+            id="map-message"
+            role="status"
+            aria-live="polite"
+            class="hidden rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900"
+        ></p>
         <div
             id="vending-map"
             wire:ignore
@@ -26,15 +32,99 @@
     <script data-navigate-once>
         (() => {
             let map = null;
+            let markerRequest = null;
             const academy = [33.589, 130.395];
 
             const destroyMap = () => {
+                markerRequest?.abort();
+                markerRequest = null;
+
                 if (!map) {
                     return;
                 }
 
                 map.remove();
                 map = null;
+            };
+
+            const createPopupContent = (machine) => {
+                const content = document.createElement('div');
+                const maker = document.createElement('strong');
+                const productCount = document.createElement('p');
+                const detailLink = document.createElement('a');
+
+                maker.textContent = machine.maker || 'メーカー不明';
+                productCount.textContent = `商品数: ${machine.product_count}件`;
+                detailLink.href = `/vending-machines/${encodeURIComponent(machine.id)}`;
+                detailLink.textContent = '詳細を見る';
+
+                content.append(maker, productCount, detailLink);
+
+                return content;
+            };
+
+            const loadVendingMachineMarkers = async (requestedMap) => {
+                const message = document.getElementById('map-message');
+                const request = new AbortController();
+
+                markerRequest?.abort();
+                markerRequest = request;
+
+                try {
+                    const response = await fetch('/api/vending-machines', {
+                        headers: { Accept: 'application/json' },
+                        signal: request.signal
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const machines = await response.json();
+
+                    if (!Array.isArray(machines)) {
+                        throw new Error('Unexpected response');
+                    }
+
+                    if (
+                        map !== requestedMap ||
+                        !requestedMap.getContainer().isConnected
+                    ) {
+                        return;
+                    }
+
+                    for (const machine of machines) {
+                        const latitude = Number(machine.latitude);
+                        const longitude = Number(machine.longitude);
+
+                        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                            continue;
+                        }
+
+                        L.marker([latitude, longitude])
+                            .bindPopup(createPopupContent(machine))
+                            .addTo(requestedMap);
+                    }
+
+                    message?.classList.add('hidden');
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        return;
+                    }
+
+                    if (
+                        map === requestedMap &&
+                        requestedMap.getContainer().isConnected &&
+                        message
+                    ) {
+                        message.textContent = '自販機情報を読み込めませんでした。時間をおいて再度お試しください。';
+                        message.classList.remove('hidden');
+                    }
+                } finally {
+                    if (markerRequest === request) {
+                        markerRequest = null;
+                    }
+                }
             };
 
             const initializeMap = () => {
@@ -161,6 +251,7 @@
                 };
 
                 locationControl.addTo(map);
+                loadVendingMachineMarkers(map);
             };
 
             document.addEventListener('livewire:navigating', destroyMap);
