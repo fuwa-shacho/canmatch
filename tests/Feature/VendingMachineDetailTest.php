@@ -46,6 +46,7 @@ class VendingMachineDetailTest extends TestCase
             ->assertSee('開発用コーヒー')
             ->assertSee('185ml')
             ->assertSee('130円')
+            ->assertSee('100mlあたり70.3円')
             ->assertSee('温かい')
             ->assertSee('id="vending-machine-detail-map"', false)
             ->assertSee('data-latitude="33.5890000"', false)
@@ -91,6 +92,25 @@ class VendingMachineDetailTest extends TestCase
             ->assertSee('メーカー不明')
             ->assertSee('退会済みユーザー')
             ->assertSee('商品情報はまだ登録されていません。');
+    }
+
+    public function test_unit_price_is_not_displayed_when_product_volume_is_unknown(): void
+    {
+        $viewer = User::factory()->create();
+        $machine = $this->createMachine();
+        $product = Product::create(['name' => '容量不明の開発用商品']);
+
+        $machine->products()->attach($product->id, [
+            'price' => 150,
+            'temperature' => 'cold',
+            'recorded_at' => '2026-10-20 00:00:00',
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('vending-machines.show', $machine))
+            ->assertOk()
+            ->assertSee('容量: 不明')
+            ->assertDontSee('100mlあたり');
     }
 
     public function test_unknown_machine_returns_not_found(): void
