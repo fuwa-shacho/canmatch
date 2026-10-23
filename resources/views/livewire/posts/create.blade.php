@@ -2,6 +2,7 @@
 
 use App\Exceptions\AiReadFailedException;
 use App\Services\ProductMatcher;
+use App\Services\VendingMachineRegistrar;
 use App\Services\VendingMachineReader;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -111,7 +112,7 @@ new #[Layout('components.layouts.app')] class extends Component {
             ->map(fn ($p) => $this->newRow([
                 'name' => $p['name'] ?? '',
                 'price' => $p['price'],
-                'temperature' => $p['temperature'],
+                'temperature' => $p['temperature'] ?? '',
             ]))
             ->values()
             ->all();
@@ -134,7 +135,7 @@ new #[Layout('components.layouts.app')] class extends Component {
             'id' => (string) Str::uuid(),
             'name' => '',
             'price' => null,
-            'temperature' => null,
+            'temperature' => '',
         ], $attrs);
 
         return array_merge($row, $this->matchFor((string) $row['name']));
@@ -252,7 +253,14 @@ new #[Layout('components.layouts.app')] class extends Component {
 
     public function register(): void
     {
+        if ($this->registered) {
+            return; // 二重送信の防止
+        }
+
         $this->validate([
+            'maker' => 'required|string|in:unknown,dydo,suntory,cocacola,asahi,kirin,itoen,other',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
             'rows' => 'required|array|min:1',
             'rows.*.name' => 'required|string|max:100',
             'rows.*.price' => 'required|integer|min:0|max:100000',
@@ -280,6 +288,10 @@ new #[Layout('components.layouts.app')] class extends Component {
                 },
             ],
         ], [
+            'latitude.required' => '現在地を取得してください',
+            'latitude.between' => '緯度が正しくありません',
+            'longitude.required' => '現在地を取得してください',
+            'longitude.between' => '経度が正しくありません',
             'rows.required' => '商品を1つ以上入力してください',
             'rows.min' => '商品を1つ以上入力してください',
             'rows.*.name.required' => '商品名を入力してください',
@@ -291,8 +303,32 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.temperature.required' => '温冷を選んでください',
         ]);
 
-        // 自販機・商品・価格の保存は Issue 45 で実装する。
+        abort_if(
+            $this->savedPath === null || $this->latitude === null || $this->longitude === null,
+            422
+        );
+
+        try {
+            app(VendingMachineRegistrar::class)->register([
+                'latitude' => $this->latitude,
+                'longitude' => $this->longitude,
+                'maker' => $this->maker === 'unknown' ? null : $this->maker,
+                'photo_path' => $this->savedPath,
+                'user_id' => auth()->id(),
+            ], $this->rows);
+        } catch (\Illuminate\Database\QueryException $e) {
+            report($e);
+            $this->addError('rows', '保存に失敗しました。もう一度試してください。');
+
+            return;
+        }
+
         $this->registered = true;
+
+        session()->flash('status', '自販機を登録しました');
+
+        // 詳細ページができるまでの仮の遷移先。できたら machines.show などに差し替える
+        $this->redirectRoute('map', navigate: true);
     }
 }; ?>
 
@@ -303,7 +339,7 @@ new #[Layout('components.layouts.app')] class extends Component {
         <form
             wire:submit="save"
             class="mt-6 flex max-w-md flex-col gap-6"
-            x-data="{ locationStatus: 'loading', locationMessage: '現在地を取得しています...' }"
+            x-data="{ locationStatus: 'loading', locationMessage: '現在地を取得しています...', uploading: false }"
             x-init="
                 if (!navigator.geolocation) {
                     locationStatus = 'error';
@@ -331,11 +367,11 @@ new #[Layout('components.layouts.app')] class extends Component {
         >
             <div
                 x-data="{
-                    uploading: false,
                     error: null,
                     async resize(event) {
                         const file = event.target.files[0];
                         if (!file) return;
+                        uploading = true;
                         this.error = null;
 
                         let bitmap;
@@ -370,18 +406,19 @@ new #[Layout('components.layouts.app')] class extends Component {
                         }
 
                         const resized = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-                        this.uploading = true;
+                        uploading = true;
                         $wire.upload(
                             'photo',
                             resized,
-                            () => { this.uploading = false },
+                            () => { uploading = false },
                             () => {
-                                this.uploading = false;
+                                uploading = false;
                                 this.error = '写真のアップロードに失敗しました。もう一度お試しください。';
                             }
                         );
                     },
                     fail(event, message) {
+                        uploading = false;
                         this.error = message;
                         event.target.value = '';
                         $wire.$set('photo', null);
@@ -423,7 +460,7 @@ new #[Layout('components.layouts.app')] class extends Component {
 
             <flux:button type="submit" variant="primary" class="w-full"
                 :disabled="$latitude === null || $longitude === null"
-                x-bind:disabled="locationStatus !== 'ok' || $wire.latitude === null || $wire.longitude === null"
+                x-bind:disabled="uploading || locationStatus !== 'ok' || $wire.latitude === null || $wire.longitude === null"
                 wire:loading.attr="disabled" wire:target="save,photo">
                 <span wire:loading.remove wire:target="save,photo">送信する</span>
                 <span wire:loading wire:target="photo">写真を送信中...</span>
@@ -457,7 +494,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                 @error('rows') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
 
                 @foreach ($rows as $i => $row)
-                    <div wire:key="row-{{ $row['id'] }}" class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                    <div wire:key="row-{{ $row['id'] }}-{{ $i }}" class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
                         <flux:input wire:model="rows.{{ $i }}.name" label="商品名" />
                         <div class="mt-2 grid grid-cols-2 gap-2">
                             <flux:input wire:model="rows.{{ $i }}.price" label="価格(円)" type="number" inputmode="numeric" min="0" />
@@ -500,9 +537,7 @@ new #[Layout('components.layouts.app')] class extends Component {
                 </flux:button>
                 <flux:button variant="ghost" wire:click="backToForm">撮り直す</flux:button>
 
-                @if ($registered)
-                    <flux:text class="text-green-600">入力内容を確認しました(保存は #45 で実装します)。</flux:text>
-                @endif
+
             </div>
         </div>
     @endif
