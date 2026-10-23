@@ -3,6 +3,7 @@
 namespace Tests\Feature\Posts;
 
 use App\Models\User;
+use App\Services\VendingMachineReader;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -36,16 +37,15 @@ class CreatePostTest extends TestCase
             fn (string $path, $expiration, array $options): string => 'https://photos.test/'.$path
         );
         $this->actingAs(User::factory()->create());
+        $this->mockReader();
 
         $component = Volt::test('posts.create')
             ->call('setLocation', 33.5903547, 130.4017155)
             ->set('photo', UploadedFile::fake()->image('machine.jpg'))
             ->call('save')
             ->assertHasNoErrors()
-            ->assertSet('received', true)
-            ->assertSee('保存しました')
-            ->assertSee('33.5903547')
-            ->assertSee('130.4017155');
+            ->assertSet('step', 'review')
+            ->assertSee('読み取り結果を確認する');
 
         $files = Storage::disk('photos')->allFiles();
 
@@ -66,7 +66,7 @@ class CreatePostTest extends TestCase
             ->set('photo', UploadedFile::fake()->image('machine.jpg'))
             ->call('save')
             ->assertHasErrors(['latitude', 'longitude'])
-            ->assertSet('received', false);
+            ->assertSet('step', 'form');
     }
 
     public function test_location_coordinates_must_be_within_valid_ranges(): void
@@ -79,7 +79,7 @@ class CreatePostTest extends TestCase
             ->set('photo', UploadedFile::fake()->image('machine.jpg'))
             ->call('save')
             ->assertHasErrors(['latitude', 'longitude'])
-            ->assertSet('received', false);
+            ->assertSet('step', 'form');
     }
 
     public function test_non_image_file_is_rejected(): void
@@ -91,7 +91,7 @@ class CreatePostTest extends TestCase
             ->set('photo', UploadedFile::fake()->create('a.pdf', 10, 'application/pdf'))
             ->call('save')
             ->assertHasErrors(['photo'])
-            ->assertSet('received', false);
+            ->assertSet('step', 'form');
     }
 
     public function test_photo_larger_than_two_megabytes_is_rejected(): void
@@ -102,7 +102,7 @@ class CreatePostTest extends TestCase
             ->set('photo', UploadedFile::fake()->image('large.jpg')->size(2049))
             ->call('save')
             ->assertHasErrors(['photo'])
-            ->assertSet('received', false);
+            ->assertSet('step', 'form');
     }
 
     public function test_maker_must_be_one_of_the_allowed_values(): void
@@ -115,7 +115,7 @@ class CreatePostTest extends TestCase
             ->set('maker', 'unlisted-maker')
             ->call('save')
             ->assertHasErrors(['maker'])
-            ->assertSet('received', false);
+            ->assertSet('step', 'form');
     }
 
     public function test_storage_failure_does_not_mark_the_photo_as_saved(): void
@@ -139,7 +139,7 @@ class CreatePostTest extends TestCase
             ->call('save')
             ->assertHasErrors(['photo'])
             ->assertSet('savedPath', null)
-            ->assertSet('received', false)
+            ->assertSet('step', 'form')
             ->assertSee('写真を保存できませんでした。もう一度お試しください。');
 
         $this->assertDatabaseCount('vending_machines', 0);
@@ -167,7 +167,21 @@ class CreatePostTest extends TestCase
             ->call('save')
             ->assertHasErrors(['photo'])
             ->assertSet('savedPath', null)
-            ->assertSet('received', false)
+            ->assertSet('step', 'form')
             ->assertSee('写真を保存できませんでした。もう一度お試しください。');
+    }
+
+    private function mockReader(): void
+    {
+        $reader = \Mockery::mock(VendingMachineReader::class);
+        $reader->shouldReceive('read')->once()->andReturn([
+            'result' => [
+                'is_vending_machine' => true,
+                'maker' => null,
+                'products' => [],
+            ],
+        ]);
+
+        $this->app->instance(VendingMachineReader::class, $reader);
     }
 }
