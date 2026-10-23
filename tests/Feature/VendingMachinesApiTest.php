@@ -122,7 +122,37 @@ class VendingMachinesApiTest extends TestCase
         $this->assertSame(1, $response->json('0.product_count'));
     }
 
-    public function test_product_name_query_parameter_is_reserved_and_does_not_filter_results(): void
+    public function test_product_name_query_parameter_filters_machines_by_partial_product_name(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $matchingMachineId = $this->createVendingMachine(
+            '検索対象メーカー',
+            '33.5903547',
+            '130.4017155',
+            '2026-10-18 06:00:00'
+        );
+        $otherMachineId = $this->createVendingMachine(
+            '検索対象外メーカー',
+            '33.5890001',
+            '130.3950009',
+            '2026-10-18 07:15:30'
+        );
+        $matchingProductId = $this->createProduct('開発用ドクターペッパー');
+        $otherProductId = $this->createProduct('開発用サイダー');
+        $this->attachProduct($matchingMachineId, $matchingProductId, 'hot');
+        $this->attachProduct($matchingMachineId, $matchingProductId, 'cold');
+        $this->attachProduct($otherMachineId, $otherProductId, null);
+
+        $machines = $this->getJson('/api/vending-machines?product_name='.urlencode('ドクターペッパー'))
+            ->assertOk()
+            ->json();
+
+        $this->assertCount(1, $machines);
+        $this->assertSame($matchingMachineId, $machines[0]['id']);
+    }
+
+    public function test_product_name_query_returns_an_empty_array_when_no_product_matches(): void
     {
         $this->actingAs(User::factory()->create());
 
@@ -132,17 +162,25 @@ class VendingMachinesApiTest extends TestCase
             '130.4017155',
             '2026-10-18 06:00:00'
         );
-        $productId = $this->createProduct('開発用商品');
+        $productId = $this->createProduct('開発用サイダー');
         $this->attachProduct($machineId, $productId, null);
 
-        $allMachines = $this->getJson('/api/vending-machines')
+        $this->getJson('/api/vending-machines?product_name='.urlencode('ドクターペッパー'))
             ->assertOk()
-            ->json();
-        $reservedParameterResult = $this->getJson('/api/vending-machines?product_name=存在しない商品')
-            ->assertOk()
-            ->json();
+            ->assertExactJson([]);
+    }
 
-        $this->assertSame($allMachines, $reservedParameterResult);
+    public function test_product_name_query_must_be_a_string_within_the_length_limit(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->getJson('/api/vending-machines?product_name[]=invalid')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('product_name');
+
+        $this->getJson('/api/vending-machines?product_name='.str_repeat('a', 101))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('product_name');
     }
 
     private function createVendingMachine(
