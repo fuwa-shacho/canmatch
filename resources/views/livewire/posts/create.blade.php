@@ -2,12 +2,12 @@
 
 use App\Exceptions\AiReadFailedException;
 use App\Services\ProductMatcher;
-use App\Services\VendingMachineRegistrar;
 use App\Services\VendingMachineReader;
+use App\Services\VendingMachineRegistrar;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use League\Flysystem\UnableToDeleteFile;
 use League\Flysystem\UnableToCheckFileExistence;
+use League\Flysystem\UnableToDeleteFile;
 use League\Flysystem\UnableToSetVisibility;
 use League\Flysystem\UnableToWriteFile;
 use Livewire\Attributes\Layout;
@@ -16,7 +16,8 @@ use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
-new #[Layout('components.layouts.app')] class extends Component {
+new #[Layout('components.layouts.app')] class extends Component
+{
     use WithFileUploads;
 
     #[Validate('required|image|max:2048')]
@@ -37,10 +38,15 @@ new #[Layout('components.layouts.app')] class extends Component {
     public ?string $savedPath = null;
 
     public ?string $notice = null;
+
     public ?string $previewUrl = null;
+
     public ?string $readError = null;
+
     public ?string $aiMaker = null;
+
     public array $rows = [];
+
     public bool $registered = false;
 
     public function setLocation(float $latitude, float $longitude): void
@@ -384,7 +390,6 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.new_volume_ml.max' => '容量が大きすぎます',
         ]);
 
-
         abort_if(
             $this->savedPath === null || $this->latitude === null || $this->longitude === null,
             422
@@ -447,6 +452,20 @@ new #[Layout('components.layouts.app')] class extends Component {
                 }
             "
         >
+            <aside
+                role="note"
+                class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100"
+            >
+                <h2 class="font-semibold">撮影時の注意と写真の利用について</h2>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                    <li>人の顔や車のナンバーが写らないようにしてください。</li>
+                    <li>私有地には入らないでください。</li>
+                    <li>歩きながら操作しないでください。</li>
+                    <li>投稿写真はAIによる商品情報の読み取りに使用します。</li>
+                    <li>投稿写真は他の利用者には公開されません。</li>
+                </ul>
+            </aside>
+
             <div
                 x-data="{
                     error: null,
