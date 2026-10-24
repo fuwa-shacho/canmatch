@@ -45,6 +45,13 @@ return [
         'retry_wait' => env('GEMINI_RETRY_WAIT', 10),
     ],
 
+    // 登録ボタンのボット対策(Issue #48)。既定は無効で、無効の間は検証しない
+    'turnstile' => [
+        'enabled' => (bool) env('TURNSTILE_ENABLED', false),
+        'site_key' => env('TURNSTILE_SITE_KEY'),
+        'secret' => env('TURNSTILE_SECRET_KEY'),
+    ],
+
     'cloudflare' => [
         'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
         'api_token' => env('CLOUDFLARE_API_TOKEN'),

@@ -2,6 +2,7 @@
 
 use App\Exceptions\AiReadFailedException;
 use App\Services\ProductMatcher;
+use App\Services\TurnstileVerifier;
 use App\Services\VendingMachineRegistrar;
 use App\Services\VendingMachineReader;
 use Illuminate\Support\Facades\Storage;
@@ -42,6 +43,7 @@ new #[Layout('components.layouts.app')] class extends Component {
     public ?string $aiMaker = null;
     public array $rows = [];
     public bool $registered = false;
+    public ?string $turnstileToken = null;
 
     public function setLocation(float $latitude, float $longitude): void
     {
@@ -66,6 +68,17 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->rows = [];
         $this->registered = false;
         $this->validate();
+
+        // ボット対策(#48)。通らなければ写真の保存もAIの呼び出しもしない。トークンは1回しか使えないので毎回作り直させる
+        $verified = app(TurnstileVerifier::class)->verify($this->turnstileToken);
+        $this->turnstileToken = null;
+        $this->dispatch('turnstile-reset');
+
+        if (! $verified) {
+            $this->addError('turnstileToken', 'ロボットでないことを確認できませんでした。チェックをやり直してから送信してください。');
+
+            return;
+        }
 
         $disk = config('filesystems.photos_disk');
 
@@ -539,6 +552,8 @@ new #[Layout('components.layouts.app')] class extends Component {
                     :class="locationStatus === 'error' ? 'text-red-500' : (locationStatus === 'ok' ? 'text-green-600' : 'text-zinc-500')"
                 ></p>
             </div>
+
+            <x-turnstile />
 
             <flux:button type="submit" variant="primary" class="w-full"
                 :disabled="$latitude === null || $longitude === null"
