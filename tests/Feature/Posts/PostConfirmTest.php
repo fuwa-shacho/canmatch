@@ -9,6 +9,7 @@ use App\Models\VendingMachine;
 use App\Services\VendingMachineReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Volt\Volt;
@@ -144,6 +145,24 @@ class PostConfirmTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
         $this->preparePhotoStorage();
+        $product = Product::create(['name' => '開発用お茶', 'volume_ml' => null]);
+
+        foreach (range(1, 4) as $index) {
+            $existingMachine = VendingMachine::create([
+                'latitude' => 33.5800000 + ($index / 10000),
+                'longitude' => 130.3900000 + ($index / 10000),
+                'photo_path' => "photos/common-{$index}.jpg",
+                'last_confirmed_at' => now(),
+            ]);
+            DB::table('machine_products')->insert([
+                'vending_machine_id' => $existingMachine->id,
+                'product_id' => $product->id,
+                'price' => 120,
+                'temperature' => 'cold',
+                'recorded_at' => now(),
+            ]);
+        }
+
         $this->mockReader($this->vendingMachineResult([
             ['name' => '開発用お茶', 'price' => 150, 'temperature' => 'cold'],
         ]));
@@ -155,11 +174,11 @@ class PostConfirmTest extends TestCase
             ->assertSet('registered', true)
             ->assertSet('savedPath', $savedPath);
 
-        $machine = VendingMachine::sole();
+        $machine = VendingMachine::query()->where('photo_path', $savedPath)->sole();
         $component->assertRedirect(route('vending-machines.show', $machine, absolute: false));
 
         Storage::disk('photos')->assertExists($savedPath);
-        $this->assertDatabaseCount('vending_machines', 1);
+        $this->assertDatabaseCount('vending_machines', 5);
         $this->assertDatabaseHas('vending_machines', [
             'photo_path' => $savedPath,
             'maker' => null,
