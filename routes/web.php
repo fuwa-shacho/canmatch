@@ -27,6 +27,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('api/vending-machines', ApiVendingMachineController::class);
 
     Route::redirect('settings', 'settings/profile');
+
+    Volt::route('ask', 'questions.ask')->name('ask');
     Volt::route('posts/create', 'posts.create')->name('posts.create');
 
     Route::get('rare-products', RareProductController::class)->name('rare-products.index');

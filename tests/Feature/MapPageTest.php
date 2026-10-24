@@ -109,6 +109,8 @@ class MapPageTest extends TestCase
             ->assertSee("badge.textContent = '最安'", false)
             ->assertSee('product.days_ago >= 30', false)
             ->assertSee('${product.days_ago}日前の情報', false)
+            ->assertSee('product.unit_price_per_100ml === null', false)
+            ->assertSee('100mlあたり${product.unit_price_per_100ml}円', false)
             ->assertSee("hot: '温'", false)
             ->assertSee("cold: '冷'", false);
     }
