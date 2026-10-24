@@ -52,6 +52,26 @@ class PointAwarderTest extends TestCase
         ]);
     }
 
+    public function test_rare_bonus_awards_configured_points_only_once_per_machine(): void
+    {
+        $user = User::factory()->create();
+        $machine = $this->createMachine($user, 1);
+        $awarder = app(PointAwarder::class);
+
+        $first = $awarder->awardRareBonus($user, $machine);
+        $second = $awarder->awardRareBonus($user, $machine);
+
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame('rare_bonus', $first->type);
+        $this->assertSame(20, $first->points);
+        $this->assertDatabaseHas('point_logs', [
+            'vending_machine_id' => $machine->id,
+            'type' => 'rare_bonus',
+            'points' => 20,
+        ]);
+        $this->assertSame(1, PointLog::where('type', 'rare_bonus')->count());
+    }
+
     public function test_point_values_come_from_config(): void
     {
         config([
