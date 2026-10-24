@@ -6,7 +6,8 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 
-new #[Layout('components.layouts.app')] class extends Component {
+new #[Layout('components.layouts.app')] class extends Component
+{
     /** 質問の例(押すとそのまま質問する) */
     public const EXAMPLES = [
         '甘くない炭酸を安く買える場所は?',
