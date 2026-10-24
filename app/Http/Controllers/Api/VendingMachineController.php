@@ -67,6 +67,7 @@ class VendingMachineController extends Controller
                         'product_name' => $product->name,
                         'volume_ml' => $product->volume_ml,
                         'price' => (int) $product->pivot->price,
+                        'unit_price_per_100ml' => $product->pivot->pricePer100Ml($product->volume_ml),
                         'temperature' => $product->pivot->temperature,
                         'recorded_at' => $recordedAt->utc()->toISOString(),
                         'days_ago' => $daysAgo,

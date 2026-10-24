@@ -121,6 +121,9 @@
                     const link = document.createElement('a');
                     const heading = document.createElement('div');
                     const price = document.createElement('p');
+                    const unitPrice = product.unit_price_per_100ml === null
+                        ? null
+                        : document.createElement('p');
                     const details = document.createElement('p');
                     const isLowest = product.price === lowestPrice;
                     const temperatureLabels = {
@@ -145,11 +148,19 @@
 
                     price.textContent = `${product.product_name}: ${product.price}円`;
                     price.className = 'mt-1 font-bold';
+                    if (unitPrice) {
+                        unitPrice.textContent = `100mlあたり${product.unit_price_per_100ml}円`;
+                        unitPrice.className = 'mt-1 text-sm text-neutral-600 dark:text-neutral-300';
+                    }
                     details.textContent = `${temperatureLabels[product.temperature] ?? '温冷不明'} / ${product.days_ago}日前の情報`;
                     details.className = product.days_ago >= 30
                         ? 'mt-1 text-sm font-semibold text-red-700 dark:text-red-300'
                         : 'mt-1 text-sm text-neutral-600 dark:text-neutral-300';
-                    item.append(heading, price, details);
+                    item.append(heading, price);
+                    if (unitPrice) {
+                        item.append(unitPrice);
+                    }
+                    item.append(details);
                     results.append(item);
                 }
             };
