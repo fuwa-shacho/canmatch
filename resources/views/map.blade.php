@@ -378,6 +378,11 @@
                     loadVendingMachineMarkers(map, searchInput?.value.trim() ?? '');
                 });
 
+                // サイドバーの「検索」から来たときは、すぐ入力できるように検索欄にカーソルを置く
+                if (new URLSearchParams(window.location.search).has('search')) {
+                    searchInput?.focus();
+                }
+
                 resetButton?.addEventListener('click', () => {
                     if (searchInput) {
                         searchInput.value = '';
