@@ -59,6 +59,11 @@ class User extends Authenticatable // implements MustVerifyEmail
         return $this->hasMany(PointLog::class);
     }
 
+    public function aiReadLogs(): HasMany
+    {
+        return $this->hasMany(AiReadLog::class);
+    }
+
     /**
      * Get the user's initials
      */

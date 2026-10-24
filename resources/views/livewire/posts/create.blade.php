@@ -1,10 +1,12 @@
 <?php
 
 use App\Exceptions\AiReadFailedException;
+use App\Services\AiReadLogRecorder;
 use App\Services\ProductMatcher;
 use App\Services\VendingMachineRegistrar;
 use App\Services\VendingMachineReader;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use League\Flysystem\UnableToDeleteFile;
 use League\Flysystem\UnableToCheckFileExistence;
@@ -36,6 +38,9 @@ new #[Layout('components.layouts.app')] class extends Component {
     #[Locked]
     public ?string $savedPath = null;
 
+    #[Locked]
+    public ?int $readLogId = null;
+
     public ?string $notice = null;
     public ?string $previewUrl = null;
     public ?string $readError = null;
@@ -58,8 +63,9 @@ new #[Layout('components.layouts.app')] class extends Component {
         ];
     }
 
-    public function save(VendingMachineReader $reader): void
+    public function save(VendingMachineReader $reader, AiReadLogRecorder $recorder): void
     {
+        $this->readLogId = null;
         $this->readError = null;
         $this->notice = null;
         $this->aiMaker = null;
@@ -92,7 +98,9 @@ new #[Layout('components.layouts.app')] class extends Component {
         try {
             $read = $reader->read($this->savedPath, $disk);
             $draft = $read['result'];
+            $this->readLogId = $recorder->success(auth()->id(), $this->savedPath, $read)->id;
         } catch (AiReadFailedException $e) {
+            $this->readLogId = $recorder->failure(auth()->id(), $this->savedPath, $e->reason)->id;
             $this->notice = $e->reason === 'rate_limit'
                 ? 'AIが混み合っています。少し時間をおいて撮り直すか、手入力で登録してください。'
                 : 'AIによる読み取りに失敗しました。手入力で登録してください。';
@@ -302,6 +310,7 @@ new #[Layout('components.layouts.app')] class extends Component {
         $this->notice = null;
         $this->aiMaker = null;
         $this->registered = false;
+        $this->readLogId = null;
     }
 
     private function deleteSavedPhoto(): bool
@@ -391,13 +400,21 @@ new #[Layout('components.layouts.app')] class extends Component {
         );
 
         try {
-            app(VendingMachineRegistrar::class)->register([
-                'latitude' => $this->latitude,
-                'longitude' => $this->longitude,
-                'maker' => $this->maker === 'unknown' ? null : $this->maker,
-                'photo_path' => $this->savedPath,
-                'user_id' => auth()->id(),
-            ], $this->rows);
+            DB::transaction(function (): void {
+                $machine = app(VendingMachineRegistrar::class)->register([
+                    'latitude' => $this->latitude,
+                    'longitude' => $this->longitude,
+                    'maker' => $this->maker === 'unknown' ? null : $this->maker,
+                    'photo_path' => $this->savedPath,
+                    'user_id' => auth()->id(),
+                ], $this->rows);
+
+                if ($this->readLogId !== null) {
+                    app(AiReadLogRecorder::class)->attach(
+                        $this->readLogId, auth()->id(), $machine, $this->rows,
+                    );
+                }
+            });
         } catch (\Illuminate\Database\QueryException $e) {
             report($e);
             $this->addError('rows', '保存に失敗しました。もう一度試してください。');
