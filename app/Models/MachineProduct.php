@@ -19,4 +19,13 @@ class MachineProduct extends Pivot
             'recorded_at' => 'datetime',
         ];
     }
+
+    public function pricePer100Ml(?int $volumeMl): ?float
+    {
+        if ($volumeMl === null || $volumeMl <= 0) {
+            return null;
+        }
+
+        return round($this->price * 100 / $volumeMl, 1);
+    }
 }
