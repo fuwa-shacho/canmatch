@@ -37,19 +37,19 @@
         <div class="grid gap-6 sm:grid-cols-2">
             @foreach ([
                 [
-                    'heading' => '見つけて、シェアする',
-                    'lead' => '登録するほどポイントがたまります',
-                    'items' => [
-                        ['href' => route('posts.create'), 'icon' => 'camera', 'title' => '自販機を登録する', 'text' => '写真を撮るだけ。商品と値段はAIが読み取ります'],
-                        ['href' => route('ranking.index'), 'icon' => 'trophy', 'title' => 'ランキング', 'text' => '今週いちばん見つけたのは誰？'],
-                    ],
-                ],
-                [
                     'heading' => '探して、比べる',
                     'lead' => 'みんなが見つけた一本から探せます',
                     'items' => [
                         ['href' => route('map'), 'icon' => 'map', 'title' => '地図で探す', 'text' => '飲みたい商品の名前で、近くて安い自販機を探そう'],
                         ['href' => route('rare-products.index'), 'icon' => 'star', 'title' => 'レア商品', 'text' => 'なかなか見かけない一本は、ここにあります'],
+                    ],
+                ],
+                [
+                    'heading' => '見つけて、シェアする',
+                    'lead' => '登録するほどポイントがたまります',
+                    'items' => [
+                        ['href' => route('posts.create'), 'icon' => 'camera', 'title' => '自販機を登録する', 'text' => '写真を撮るだけ。商品と値段はAIが読み取ります'],
+                        ['href' => route('ranking.index'), 'icon' => 'trophy', 'title' => 'ランキング', 'text' => '今週いちばん見つけたのは誰？'],
                     ],
                 ],
             ] as $group)
