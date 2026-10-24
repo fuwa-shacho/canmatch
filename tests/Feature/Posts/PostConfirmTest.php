@@ -35,6 +35,21 @@ class PostConfirmTest extends TestCase
             ->assertDontSee('AI生応答の開発用secret');
     }
 
+    public function test_photo_guidance_is_visible_before_photo_input(): void
+    {
+        $guidance = [
+            '人の顔や車のナンバーが写らないようにしてください。',
+            '私有地には入らないでください。',
+            '歩きながら操作しないでください。',
+            '投稿写真はAIによる商品情報の読み取りに使用します。',
+            '投稿写真は他の利用者には公開されません。',
+            'type="file"',
+        ];
+
+        Volt::test('posts.create')
+            ->assertSeeInOrder($guidance, false);
+    }
+
     public function test_rows_can_be_edited_added_and_removed(): void
     {
         $this->preparePhotoStorage();
