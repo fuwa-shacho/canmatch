@@ -109,6 +109,78 @@ class VendingMachineRegistrarTest extends TestCase
         $this->assertSame(1, PointLog::where('type', 'rare_bonus')->count());
     }
 
+    public function test_新商品の1台目は通常点だけを付与する(): void
+    {
+        $user = User::factory()->create();
+        $attributes = $this->attributes();
+        $attributes['user_id'] = $user->id;
+
+        app(VendingMachineRegistrar::class)->register($attributes, [
+            ['name' => '本当に珍しい商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+        ]);
+
+        $this->assertSame(1, PointLog::where('type', 'registration')->count());
+        $this->assertSame(0, PointLog::where('type', 'rare_bonus')->count());
+    }
+
+    public function test_別ユーザーによる2台目で1台目へ遡及し2台目にもボーナスを付与する(): void
+    {
+        $firstUser = User::factory()->create();
+        $secondUser = User::factory()->create();
+        $firstAttributes = $this->attributes();
+        $firstAttributes['user_id'] = $firstUser->id;
+
+        $firstMachine = app(VendingMachineRegistrar::class)->register($firstAttributes, [
+            ['name' => '確認待ち商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+        ]);
+        $product = Product::where('name', '確認待ち商品')->firstOrFail();
+
+        $this->travel(1)->day();
+        $secondAttributes = $this->attributes();
+        $secondAttributes['latitude'] = 33.6000000;
+        $secondAttributes['longitude'] = 130.4100000;
+        $secondAttributes['user_id'] = $secondUser->id;
+        $secondMachine = app(VendingMachineRegistrar::class)->register($secondAttributes, [
+            ['name' => $product->name, 'price' => 160, 'temperature' => 'cold', 'product_id' => $product->id],
+        ]);
+
+        $retroactive = PointLog::where('type', 'rare_bonus')->where('product_id', $product->id)->firstOrFail();
+        $this->assertSame($firstUser->id, $retroactive->user_id);
+        $this->assertSame($firstMachine->id, $retroactive->vending_machine_id);
+        $this->assertTrue($retroactive->created_at->isToday());
+        $this->assertDatabaseHas('point_logs', [
+            'user_id' => $secondUser->id,
+            'vending_machine_id' => $secondMachine->id,
+            'product_id' => null,
+            'type' => 'rare_bonus',
+            'points' => 20,
+        ]);
+        $this->assertSame(2, PointLog::where('type', 'rare_bonus')->count());
+    }
+
+    public function test_同じユーザーによる2台目では1台目へ遡及しない(): void
+    {
+        $user = User::factory()->create();
+        $firstAttributes = $this->attributes();
+        $firstAttributes['user_id'] = $user->id;
+
+        app(VendingMachineRegistrar::class)->register($firstAttributes, [
+            ['name' => '自己確認商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+        ]);
+        $product = Product::where('name', '自己確認商品')->firstOrFail();
+
+        $secondAttributes = $this->attributes();
+        $secondAttributes['latitude'] = 33.6000000;
+        $secondAttributes['longitude'] = 130.4100000;
+        $secondAttributes['user_id'] = $user->id;
+        app(VendingMachineRegistrar::class)->register($secondAttributes, [
+            ['name' => $product->name, 'price' => 160, 'temperature' => 'cold', 'product_id' => $product->id],
+        ]);
+
+        $this->assertSame(0, PointLog::where('product_id', $product->id)->count());
+        $this->assertSame(1, PointLog::where('type', 'rare_bonus')->count());
+    }
+
     public function test_通常商品の登録ではレアボーナスを付与しない(): void
     {
         $user = User::factory()->create();
@@ -174,20 +246,35 @@ class VendingMachineRegistrarTest extends TestCase
     {
         config(['points.rare_bonus' => 0]);
         $user = User::factory()->create();
+        $product = Product::create(['name' => '既存のレア商品']);
+        $existingMachine = VendingMachine::create([
+            'latitude' => 33.5800000,
+            'longitude' => 130.3900000,
+            'photo_path' => 'photos/existing-rare.jpg',
+            'last_confirmed_at' => now(),
+        ]);
+        DB::table('machine_products')->insert([
+            'vending_machine_id' => $existingMachine->id,
+            'product_id' => $product->id,
+            'price' => 140,
+            'temperature' => 'cold',
+            'recorded_at' => now(),
+        ]);
         $attributes = $this->attributes();
         $attributes['user_id'] = $user->id;
 
         try {
             app(VendingMachineRegistrar::class)->register($attributes, [
-                ['name' => '新しいレア商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+                ['name' => $product->name, 'price' => 150, 'temperature' => 'cold', 'product_id' => $product->id],
             ]);
             $this->fail('レアボーナス設定が不正なら失敗するはずです');
         } catch (LogicException) {
             $this->assertTrue(true);
         }
 
-        $this->assertSame(0, VendingMachine::count());
-        $this->assertSame(0, Product::count());
+        $this->assertSame(1, VendingMachine::count());
+        $this->assertSame(1, Product::count());
+        $this->assertDatabaseCount('machine_products', 1);
         $this->assertSame(0, PointLog::count());
     }
 

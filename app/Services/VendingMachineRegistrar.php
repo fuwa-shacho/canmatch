@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Product;
+use App\Models\User;
 use App\Models\VendingMachine;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -36,6 +37,7 @@ class VendingMachineRegistrar
             $registeredProducts = [];
             $checkedRareProducts = [];
             $containsRareProduct = false;
+            $retroactiveDiscoveries = [];
 
             foreach ($rows as $row) {
                 $productId = $row['product_id'] ?? null;
@@ -55,8 +57,20 @@ class VendingMachineRegistrar
                 }
 
                 if (! isset($checkedRareProducts[$productId])) {
+                    $machineCount = $this->rareProductDetector->machineCount($productId);
                     $containsRareProduct = $containsRareProduct
-                        || $this->rareProductDetector->isRare($productId);
+                        || ($machineCount >= 1 && $machineCount <= $this->rareProductDetector->maximumMachineCount());
+
+                    if ($machineCount === 1 && $machine->user_id !== null) {
+                        $firstDiscovery = $this->rareProductDetector->firstDiscovery($productId);
+
+                        if ($firstDiscovery !== null
+                            && $firstDiscovery['user_id'] !== null
+                            && $firstDiscovery['user_id'] !== $machine->user_id) {
+                            $retroactiveDiscoveries[$productId] = $firstDiscovery;
+                        }
+                    }
+
                     $checkedRareProducts[$productId] = true;
                 }
 
@@ -82,6 +96,19 @@ class VendingMachineRegistrar
 
                 if ($containsRareProduct) {
                     $this->pointAwarder->awardRareBonus($machine->user, $machine);
+                }
+
+                foreach ($retroactiveDiscoveries as $productId => $firstDiscovery) {
+                    $firstUser = User::query()->find($firstDiscovery['user_id']);
+                    $firstMachine = VendingMachine::query()->find($firstDiscovery['machine_id']);
+
+                    if ($firstUser !== null && $firstMachine !== null) {
+                        $this->pointAwarder->awardRetroactiveRareBonus(
+                            $firstUser,
+                            $firstMachine,
+                            Product::query()->findOrFail($productId),
+                        );
+                    }
                 }
             }
 

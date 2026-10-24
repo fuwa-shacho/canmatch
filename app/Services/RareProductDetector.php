@@ -14,12 +14,33 @@ class RareProductDetector
 
     public function isRare(int $productId): bool
     {
-        $machineCount = DB::table('machine_products')
+        return $this->machineCount($productId) <= $this->maximumMachineCount();
+    }
+
+    public function machineCount(int $productId): int
+    {
+        return DB::table('machine_products')
             ->where('product_id', $productId)
             ->distinct()
             ->count('vending_machine_id');
+    }
 
-        return $machineCount <= $this->maximumMachineCount();
+    /**
+     * @return array{machine_id: int, user_id: int|null}|null
+     */
+    public function firstDiscovery(int $productId): ?array
+    {
+        $row = DB::table('machine_products')
+            ->join('vending_machines', 'vending_machines.id', '=', 'machine_products.vending_machine_id')
+            ->where('machine_products.product_id', $productId)
+            ->orderBy('machine_products.recorded_at')
+            ->orderBy('machine_products.id')
+            ->first(['vending_machines.id as machine_id', 'vending_machines.user_id']);
+
+        return $row === null ? null : [
+            'machine_id' => (int) $row->machine_id,
+            'user_id' => $row->user_id === null ? null : (int) $row->user_id,
+        ];
     }
 
     public function soldRareProductIds(): Builder

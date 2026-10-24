@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PointLog;
+use App\Models\Product;
 use App\Models\User;
 use App\Models\VendingMachine;
 use DateTimeInterface;
@@ -55,11 +56,30 @@ class PointAwarder
         });
     }
 
+    public function awardRetroactiveRareBonus(
+        User $user,
+        VendingMachine $machine,
+        Product $product,
+    ): PointLog {
+        return DB::transaction(function () use ($user, $machine, $product): PointLog {
+            Product::query()->whereKey($product->getKey())->lockForUpdate()->firstOrFail();
+
+            $existing = PointLog::query()
+                ->where('type', 'rare_bonus')
+                ->where('product_id', $product->id)
+                ->lockForUpdate()
+                ->first();
+
+            return $existing ?? $this->award($user, $machine, 'rare_bonus', product: $product);
+        });
+    }
+
     private function award(
         User $user,
         VendingMachine $machine,
         string $type,
         ?DateTimeInterface $awardedAt = null,
+        ?Product $product = null,
     ): PointLog {
         $points = config("points.{$type}");
 
@@ -72,6 +92,7 @@ class PointAwarder
             'type' => $type,
             'points' => $points,
             'vending_machine_id' => $machine->id,
+            'product_id' => $product?->id,
         ]);
 
         if ($awardedAt !== null) {

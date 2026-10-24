@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Product;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -129,6 +130,35 @@ class PointLogMigrationTest extends TestCase
         ]));
     }
 
+    public function test_nonexistent_product_is_rejected(): void
+    {
+        $user = User::factory()->create();
+
+        $this->expectException(QueryException::class);
+
+        DB::table('point_logs')->insert($this->pointLogAttributes([
+            'user_id' => $user->id,
+            'type' => 'rare_bonus',
+            'product_id' => 999999,
+        ]));
+    }
+
+    public function test_retroactive_rare_bonus_is_unique_per_product(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::create(['name' => '一意制約確認商品']);
+        $attributes = $this->pointLogAttributes([
+            'user_id' => $user->id,
+            'type' => 'rare_bonus',
+            'product_id' => $product->id,
+        ]);
+
+        DB::table('point_logs')->insert($attributes);
+
+        $this->expectException(QueryException::class);
+        DB::table('point_logs')->insert($attributes);
+    }
+
     public function test_deleting_a_user_cascades_to_point_logs(): void
     {
         $user = User::factory()->create();
@@ -156,6 +186,25 @@ class PointLogMigrationTest extends TestCase
             'id' => $id,
             'user_id' => $user->id,
             'vending_machine_id' => null,
+        ]);
+    }
+
+    public function test_deleting_a_product_preserves_point_log_and_clears_reference(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::create(['name' => '削除確認商品']);
+        $id = DB::table('point_logs')->insertGetId($this->pointLogAttributes([
+            'user_id' => $user->id,
+            'type' => 'rare_bonus',
+            'product_id' => $product->id,
+        ]));
+
+        $product->delete();
+
+        $this->assertDatabaseHas('point_logs', [
+            'id' => $id,
+            'user_id' => $user->id,
+            'product_id' => null,
         ]);
     }
 

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\PointLog;
+use App\Models\Product;
 use App\Models\User;
 use App\Models\VendingMachine;
 use App\Services\PointAwarder;
@@ -70,6 +71,28 @@ class PointAwarderTest extends TestCase
             'points' => 20,
         ]);
         $this->assertSame(1, PointLog::where('type', 'rare_bonus')->count());
+    }
+
+    public function test_retroactive_rare_bonus_is_awarded_only_once_per_product(): void
+    {
+        $user = User::factory()->create();
+        $machine = $this->createMachine($user, 1);
+        $product = Product::create(['name' => '初回発見商品']);
+        $awarder = app(PointAwarder::class);
+
+        $first = $awarder->awardRetroactiveRareBonus($user, $machine, $product);
+        $second = $awarder->awardRetroactiveRareBonus($user, $machine, $product);
+
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame($product->id, $first->product_id);
+        $this->assertDatabaseHas('point_logs', [
+            'user_id' => $user->id,
+            'vending_machine_id' => $machine->id,
+            'product_id' => $product->id,
+            'type' => 'rare_bonus',
+            'points' => 20,
+        ]);
+        $this->assertSame(1, PointLog::where('product_id', $product->id)->count());
     }
 
     public function test_point_values_come_from_config(): void
