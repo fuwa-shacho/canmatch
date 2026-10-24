@@ -9,7 +9,10 @@ use Illuminate\Validation\ValidationException;
 
 class VendingMachineRegistrar
 {
-    public function __construct(private ProductMatcher $matcher) {}
+    public function __construct(
+        private ProductMatcher $matcher,
+        private PointAwarder $pointAwarder,
+    ) {}
 
     /**
      * 自販機・商品・価格をまとめて保存する。途中で失敗したら全部取り消す。
@@ -63,6 +66,10 @@ class VendingMachineRegistrar
                     'temperature' => $row['temperature'],
                     'recorded_at' => $now,
                 ]);
+            }
+
+            if ($machine->user !== null) {
+                $this->pointAwarder->awardForRegistration($machine->user, $machine);
             }
 
             return $machine;
