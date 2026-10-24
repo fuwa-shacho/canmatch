@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\VendingMachineController as ApiVendingMachineController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\RankingController;
 use App\Http\Controllers\RareProductController;
 use App\Http\Controllers\VendingMachineController;
@@ -11,7 +12,7 @@ Route::get('/', function () {
     return view('welcome');
 })->name('home');
 
-Route::view('dashboard', 'dashboard')
+Route::get('dashboard', DashboardController::class)
     ->middleware(['auth'])
     ->name('dashboard');
 
