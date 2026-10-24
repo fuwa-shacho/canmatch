@@ -2,12 +2,12 @@
 
 use App\Exceptions\AiReadFailedException;
 use App\Services\ProductMatcher;
-use App\Services\VendingMachineRegistrar;
 use App\Services\VendingMachineReader;
+use App\Services\VendingMachineRegistrar;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use League\Flysystem\UnableToDeleteFile;
 use League\Flysystem\UnableToCheckFileExistence;
+use League\Flysystem\UnableToDeleteFile;
 use League\Flysystem\UnableToSetVisibility;
 use League\Flysystem\UnableToWriteFile;
 use Livewire\Attributes\Layout;
@@ -16,7 +16,8 @@ use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
-new #[Layout('components.layouts.app')] class extends Component {
+new #[Layout('components.layouts.app')] class extends Component
+{
     use WithFileUploads;
 
     #[Validate('required|image|max:2048')]
@@ -37,10 +38,15 @@ new #[Layout('components.layouts.app')] class extends Component {
     public ?string $savedPath = null;
 
     public ?string $notice = null;
+
     public ?string $previewUrl = null;
+
     public ?string $readError = null;
+
     public ?string $aiMaker = null;
+
     public array $rows = [];
+
     public bool $registered = false;
 
     public function setLocation(float $latitude, float $longitude): void
@@ -384,14 +390,13 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.new_volume_ml.max' => '容量が大きすぎます',
         ]);
 
-
         abort_if(
             $this->savedPath === null || $this->latitude === null || $this->longitude === null,
             422
         );
 
         try {
-            app(VendingMachineRegistrar::class)->register([
+            $machine = app(VendingMachineRegistrar::class)->register([
                 'latitude' => $this->latitude,
                 'longitude' => $this->longitude,
                 'maker' => $this->maker === 'unknown' ? null : $this->maker,
@@ -407,10 +412,20 @@ new #[Layout('components.layouts.app')] class extends Component {
 
         $this->registered = true;
 
-        session()->flash('status', '自販機を登録しました');
+        $earnedPoints = $machine->pointLogs()
+            ->where('user_id', auth()->id())
+            ->orderBy('id')
+            ->get(['type', 'points'])
+            ->map->only(['type', 'points'])
+            ->all();
 
-        // 詳細ページができるまでの仮の遷移先。できたら machines.show などに差し替える
-        $this->redirectRoute('map', navigate: true);
+        session()->flash('status', '自販機を登録しました');
+        session()->flash('earned_points', [
+            'vending_machine_id' => $machine->id,
+            'items' => $earnedPoints,
+        ]);
+
+        $this->redirectRoute('vending-machines.show', $machine, navigate: true);
     }
 }; ?>
 
