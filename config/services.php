@@ -61,6 +61,9 @@ return [
         'rag_score_threshold' => env('CF_RAG_SCORE_THRESHOLD', 0.45),
         'rag_top_k' => env('CF_RAG_TOP_K', 10),
         'rag_max_evidence' => env('CF_RAG_MAX_EVIDENCE', 20),
+
+        // 1人が1日(日本時間)に質問できる回数(Issue 68)
+        'rag_daily_limit' => env('CF_RAG_DAILY_LIMIT', 10),
     ],
 
 ];
