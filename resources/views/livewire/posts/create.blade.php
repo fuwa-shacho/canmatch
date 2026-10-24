@@ -396,7 +396,7 @@ new #[Layout('components.layouts.app')] class extends Component
         );
 
         try {
-            app(VendingMachineRegistrar::class)->register([
+            $machine = app(VendingMachineRegistrar::class)->register([
                 'latitude' => $this->latitude,
                 'longitude' => $this->longitude,
                 'maker' => $this->maker === 'unknown' ? null : $this->maker,
@@ -412,10 +412,20 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $this->registered = true;
 
-        session()->flash('status', '自販機を登録しました');
+        $earnedPoints = $machine->pointLogs()
+            ->where('user_id', auth()->id())
+            ->orderBy('id')
+            ->get(['type', 'points'])
+            ->map->only(['type', 'points'])
+            ->all();
 
-        // 詳細ページができるまでの仮の遷移先。できたら machines.show などに差し替える
-        $this->redirectRoute('map', navigate: true);
+        session()->flash('status', '自販機を登録しました');
+        session()->flash('earned_points', [
+            'vending_machine_id' => $machine->id,
+            'items' => $earnedPoints,
+        ]);
+
+        $this->redirectRoute('vending-machines.show', $machine, navigate: true);
     }
 }; ?>
 
