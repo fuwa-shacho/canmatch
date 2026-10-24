@@ -8,7 +8,9 @@ use App\Models\VendingMachine;
 use App\Services\PointAwarder;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use LogicException;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 class PointAwarderTest extends TestCase
@@ -89,6 +91,116 @@ class PointAwarderTest extends TestCase
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, PointLog::where('type', 'registration')->count());
+    }
+
+    public function test_concurrent_registration_awards_wait_for_the_machine_lock_on_mysql(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped('MySQL is required to verify row-lock serialization.');
+        }
+
+        $connection = 'point_award_concurrency';
+        config(["database.connections.{$connection}" => config('database.connections.mysql')]);
+        DB::purge($connection);
+
+        $user = User::factory()->make();
+        $user->setConnection($connection);
+        $user->save();
+
+        $machine = new VendingMachine([
+            'latitude' => 33.59,
+            'longitude' => 130.401,
+            'maker' => '開発用自販機メーカー',
+            'photo_path' => 'vending-machines/development/concurrency.jpg',
+            'user_id' => $user->id,
+            'last_confirmed_at' => '2026-10-23 00:00:00',
+        ]);
+        $machine->setConnection($connection);
+        $machine->save();
+
+        $holder = DB::connection($connection);
+        $holder->beginTransaction();
+        $holder->table('vending_machines')
+            ->where('id', $machine->id)
+            ->lockForUpdate()
+            ->first();
+
+        $barrier = sys_get_temp_dir().'/canmatch-pr53-'.bin2hex(random_bytes(8)).'.go';
+        $readyFiles = [
+            sys_get_temp_dir().'/canmatch-pr53-'.bin2hex(random_bytes(8)).'.ready',
+            sys_get_temp_dir().'/canmatch-pr53-'.bin2hex(random_bytes(8)).'.ready',
+        ];
+        $processes = [];
+
+        try {
+            foreach ($readyFiles as $readyFile) {
+                $script = implode("\n", [
+                    "require 'vendor/autoload.php';",
+                    '$app = require "bootstrap/app.php";',
+                    '$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();',
+                    'file_put_contents('.var_export($readyFile, true).', "ready");',
+                    'while (! file_exists('.var_export($barrier, true).')) { usleep(1000); }',
+                    '$machine = App\\Models\\VendingMachine::query()->findOrFail('.$machine->id.');',
+                    '$user = App\\Models\\User::query()->findOrFail('.$user->id.');',
+                    'app(App\\Services\\PointAwarder::class)->awardForRegistration($user, $machine);',
+                ]);
+                $process = new Process([PHP_BINARY, '-r', $script], base_path(), getenv());
+                $process->start();
+                $processes[] = $process;
+            }
+
+            $readyDeadline = microtime(true) + 10;
+            while (count(array_filter($readyFiles, 'file_exists')) !== count($readyFiles)) {
+                foreach ($processes as $process) {
+                    $this->assertTrue($process->isRunning(), $process->getErrorOutput());
+                }
+
+                $this->assertLessThan($readyDeadline, microtime(true), 'Award workers did not become ready.');
+                usleep(1000);
+            }
+
+            touch($barrier);
+
+            usleep(250000);
+
+            $allBlocked = collect($processes)->every(fn (Process $process): bool => $process->isRunning());
+
+            $holder->commit();
+
+            foreach ($processes as $process) {
+                $process->wait();
+                $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+            }
+
+            $this->assertTrue($allBlocked, 'Award workers must wait for the locked machine row.');
+            $this->assertSame(
+                1,
+                PointLog::on($connection)
+                    ->where('vending_machine_id', $machine->id)
+                    ->where('type', 'registration')
+                    ->count(),
+            );
+        } finally {
+            if ($holder->transactionLevel() > 0) {
+                $holder->rollBack();
+            }
+
+            foreach ($processes as $process) {
+                if ($process->isRunning()) {
+                    $process->stop();
+                }
+            }
+
+            @unlink($barrier);
+            foreach ($readyFiles as $readyFile) {
+                @unlink($readyFile);
+            }
+
+            PointLog::on($connection)->where('vending_machine_id', $machine->id)->delete();
+            VendingMachine::on($connection)->whereKey($machine->id)->delete();
+            User::on($connection)->whereKey($user->id)->delete();
+            DB::purge($connection);
+        }
     }
 
     public function test_registration_award_can_use_the_machine_registration_time(): void

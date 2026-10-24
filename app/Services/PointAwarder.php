@@ -6,6 +6,7 @@ use App\Models\PointLog;
 use App\Models\User;
 use App\Models\VendingMachine;
 use DateTimeInterface;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 
 class PointAwarder
@@ -15,12 +16,20 @@ class PointAwarder
         VendingMachine $machine,
         ?DateTimeInterface $awardedAt = null,
     ): PointLog {
-        $existing = PointLog::query()
-            ->where('vending_machine_id', $machine->id)
-            ->where('type', 'registration')
-            ->first();
+        return DB::transaction(function () use ($user, $machine, $awardedAt): PointLog {
+            $lockedMachine = VendingMachine::query()
+                ->whereKey($machine->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        return $existing ?? $this->award($user, $machine, 'registration', $awardedAt);
+            $existing = PointLog::query()
+                ->where('vending_machine_id', $lockedMachine->id)
+                ->where('type', 'registration')
+                ->lockForUpdate()
+                ->first();
+
+            return $existing ?? $this->award($user, $lockedMachine, 'registration', $awardedAt);
+        });
     }
 
     public function awardForUpdate(User $user, VendingMachine $machine): PointLog

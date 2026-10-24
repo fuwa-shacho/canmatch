@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\PointLog;
 use App\Models\User;
 use App\Models\VendingMachine;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class BackfillRegistrationPointsCommandTest extends TestCase
@@ -70,6 +72,61 @@ class BackfillRegistrationPointsCommandTest extends TestCase
         $this->assertSame(
             1,
             PointLog::where('vending_machine_id', $missing->id)
+                ->where('type', 'registration')
+                ->count(),
+        );
+    }
+
+    public function test_途中失敗後の再実行では未処理の自販機だけを補完する(): void
+    {
+        $user = User::factory()->create();
+        $first = $this->createMachine($user, '2026-10-01 03:04:05');
+        $second = $this->createMachine($user, '2026-10-02 03:04:05');
+
+        $shouldFail = true;
+        DB::listen(function (QueryExecuted $query) use ($second, &$shouldFail): void {
+            if (
+                $shouldFail
+                && str_starts_with(strtolower(trim($query->sql)), 'insert')
+                && str_contains(strtolower($query->sql), 'point_logs')
+                && in_array($second->id, array_map('intval', $query->bindings), true)
+            ) {
+                $shouldFail = false;
+                throw new \RuntimeException('Forced point award failure.');
+            }
+        });
+
+        try {
+            $this->artisan('points:backfill-registrations', ['--apply' => true])->run();
+            $this->fail('2台目のポイント付与が失敗するはずです');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Forced point award failure.', $exception->getMessage());
+            $this->assertDatabaseHas('point_logs', [
+                'vending_machine_id' => $first->id,
+                'type' => 'registration',
+                'points' => 10,
+            ]);
+            $this->assertDatabaseMissing('point_logs', [
+                'vending_machine_id' => $second->id,
+                'type' => 'registration',
+            ]);
+        }
+
+        $this->artisan('points:backfill-registrations', ['--apply' => true])
+            ->expectsOutputToContain('登録ポイントの補完対象: 1件')
+            ->expectsOutputToContain('登録ポイントを 1件補完しました。')
+            ->assertSuccessful();
+
+        $this->assertSame(2, PointLog::where('type', 'registration')->count());
+        $this->assertSame(
+            1,
+            PointLog::where('vending_machine_id', $first->id)
+                ->where('type', 'registration')
+                ->count(),
+        );
+        $this->assertSame(
+            1,
+            PointLog::where('vending_machine_id', $second->id)
                 ->where('type', 'registration')
                 ->count(),
         );

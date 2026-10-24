@@ -40,17 +40,13 @@ class BackfillRegistrationPoints extends Command
                     return;
                 }
 
-                $before = $machine->pointLogs()
-                    ->where('type', 'registration')
-                    ->exists();
-
-                $awarder->awardForRegistration(
+                $pointLog = $awarder->awardForRegistration(
                     $machine->user,
                     $machine,
                     $machine->created_at,
                 );
 
-                if (! $before) {
+                if ($pointLog->wasRecentlyCreated) {
                     $created++;
                 }
             });
