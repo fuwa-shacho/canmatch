@@ -37,6 +37,24 @@ class PointAwarder
         return $this->award($user, $machine, 'update');
     }
 
+    public function awardRareBonus(User $user, VendingMachine $machine): PointLog
+    {
+        return DB::transaction(function () use ($user, $machine): PointLog {
+            $lockedMachine = VendingMachine::query()
+                ->whereKey($machine->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $existing = PointLog::query()
+                ->where('vending_machine_id', $lockedMachine->id)
+                ->where('type', 'rare_bonus')
+                ->lockForUpdate()
+                ->first();
+
+            return $existing ?? $this->award($user, $lockedMachine, 'rare_bonus');
+        });
+    }
+
     private function award(
         User $user,
         VendingMachine $machine,

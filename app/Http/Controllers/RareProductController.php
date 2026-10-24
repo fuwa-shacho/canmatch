@@ -3,19 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Services\RareProductDetector;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 
 class RareProductController extends Controller
 {
-    public function __invoke(): View
+    public function __invoke(RareProductDetector $detector): View
     {
-        $maximumMachineCount = (int) config('canmatch.rare_product_max_machines');
-
-        $rareProductIds = DB::table('machine_products')
-            ->select('product_id')
-            ->groupBy('product_id')
-            ->havingRaw('COUNT(DISTINCT vending_machine_id) <= ?', [$maximumMachineCount]);
+        $maximumMachineCount = $detector->maximumMachineCount();
 
         $products = Product::query()
             ->select('products.*')
@@ -25,7 +21,7 @@ class RareProductController extends Controller
                     ->whereColumn('machine_products.product_id', 'products.id'),
                 'vending_machines_count'
             )
-            ->whereIn('products.id', $rareProductIds)
+            ->whereIn('products.id', $detector->soldRareProductIds())
             ->with('vendingMachines')
             ->orderBy('products.name')
             ->get()

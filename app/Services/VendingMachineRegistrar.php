@@ -12,6 +12,7 @@ class VendingMachineRegistrar
     public function __construct(
         private ProductMatcher $matcher,
         private PointAwarder $pointAwarder,
+        private RareProductDetector $rareProductDetector,
     ) {}
 
     /**
@@ -33,6 +34,8 @@ class VendingMachineRegistrar
             // 同じ送信の中で同じ新商品(名前と容量)が複数行あっても、商品は1つだけ作る
             $createdByName = [];
             $registeredProducts = [];
+            $checkedRareProducts = [];
+            $containsRareProduct = false;
 
             foreach ($rows as $row) {
                 $productId = $row['product_id'] ?? null;
@@ -49,6 +52,12 @@ class VendingMachineRegistrar
                             'rows' => '選択した商品が見つかりません。候補から選び直してください。',
                         ]);
                     }
+                }
+
+                if (! isset($checkedRareProducts[$productId])) {
+                    $containsRareProduct = $containsRareProduct
+                        || $this->rareProductDetector->isRare($productId);
+                    $checkedRareProducts[$productId] = true;
                 }
 
                 $key = $productId.':'.$row['temperature'];
@@ -70,6 +79,10 @@ class VendingMachineRegistrar
 
             if ($machine->user !== null) {
                 $this->pointAwarder->awardForRegistration($machine->user, $machine);
+
+                if ($containsRareProduct) {
+                    $this->pointAwarder->awardRareBonus($machine->user, $machine);
+                }
             }
 
             return $machine;

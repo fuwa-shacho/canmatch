@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\VendingMachine;
 use App\Services\VendingMachineRegistrar;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use LogicException;
 use Tests\TestCase;
@@ -62,7 +63,81 @@ class VendingMachineRegistrarTest extends TestCase
             'type' => 'registration',
             'points' => 10,
         ]);
-        $this->assertSame(1, PointLog::count());
+        $this->assertSame(1, PointLog::where('type', 'registration')->count());
+    }
+
+    public function test_レア商品を含む登録では通常点とボーナスを付与する(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::create(['name' => 'レア商品', 'volume_ml' => 500]);
+        $otherRareProduct = Product::create(['name' => '別のレア商品', 'volume_ml' => 350]);
+        $attributes = $this->attributes();
+        $attributes['user_id'] = $user->id;
+
+        foreach (range(1, 3) as $index) {
+            $existingMachine = VendingMachine::create([
+                'latitude' => 33.5800000 + ($index / 10000),
+                'longitude' => 130.3900000 + ($index / 10000),
+                'photo_path' => "photos/existing-{$index}.jpg",
+                'last_confirmed_at' => now(),
+            ]);
+            DB::table('machine_products')->insert([
+                'vending_machine_id' => $existingMachine->id,
+                'product_id' => $product->id,
+                'price' => 120,
+                'temperature' => 'cold',
+                'recorded_at' => now(),
+            ]);
+        }
+
+        $machine = app(VendingMachineRegistrar::class)->register($attributes, [
+            ['name' => 'レア商品', 'price' => 130, 'temperature' => 'cold', 'product_id' => $product->id],
+            ['name' => '別のレア商品', 'price' => 140, 'temperature' => 'cold', 'product_id' => $otherRareProduct->id],
+        ]);
+
+        $this->assertSame(4, $product->vendingMachines()->distinct()->count('vending_machines.id'));
+        $this->assertDatabaseHas('point_logs', [
+            'vending_machine_id' => $machine->id,
+            'type' => 'registration',
+            'points' => 10,
+        ]);
+        $this->assertDatabaseHas('point_logs', [
+            'vending_machine_id' => $machine->id,
+            'type' => 'rare_bonus',
+            'points' => 20,
+        ]);
+        $this->assertSame(1, PointLog::where('type', 'rare_bonus')->count());
+    }
+
+    public function test_通常商品の登録ではレアボーナスを付与しない(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::create(['name' => '通常商品', 'volume_ml' => 500]);
+        $attributes = $this->attributes();
+        $attributes['user_id'] = $user->id;
+
+        foreach (range(1, 4) as $index) {
+            $existingMachine = VendingMachine::create([
+                'latitude' => 33.5800000 + ($index / 10000),
+                'longitude' => 130.3900000 + ($index / 10000),
+                'photo_path' => "photos/common-{$index}.jpg",
+                'last_confirmed_at' => now(),
+            ]);
+            DB::table('machine_products')->insert([
+                'vending_machine_id' => $existingMachine->id,
+                'product_id' => $product->id,
+                'price' => 120,
+                'temperature' => 'cold',
+                'recorded_at' => now(),
+            ]);
+        }
+
+        app(VendingMachineRegistrar::class)->register($attributes, [
+            ['name' => '通常商品', 'price' => 130, 'temperature' => 'cold', 'product_id' => $product->id],
+        ]);
+
+        $this->assertSame(1, PointLog::where('type', 'registration')->count());
+        $this->assertSame(0, PointLog::where('type', 'rare_bonus')->count());
     }
 
     public function test_利用者がない登録にはポイントを付与しない(): void
@@ -86,6 +161,27 @@ class VendingMachineRegistrarTest extends TestCase
                 ['name' => '新商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
             ]);
             $this->fail('ポイント設定が不正なら失敗するはずです');
+        } catch (LogicException) {
+            $this->assertTrue(true);
+        }
+
+        $this->assertSame(0, VendingMachine::count());
+        $this->assertSame(0, Product::count());
+        $this->assertSame(0, PointLog::count());
+    }
+
+    public function test_レアボーナス付与に失敗したら登録全体を取り消す(): void
+    {
+        config(['points.rare_bonus' => 0]);
+        $user = User::factory()->create();
+        $attributes = $this->attributes();
+        $attributes['user_id'] = $user->id;
+
+        try {
+            app(VendingMachineRegistrar::class)->register($attributes, [
+                ['name' => '新しいレア商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+            ]);
+            $this->fail('レアボーナス設定が不正なら失敗するはずです');
         } catch (LogicException) {
             $this->assertTrue(true);
         }
