@@ -27,7 +27,7 @@
 - システム全体の構成と各コンポーネントの責務は [アーキテクチャ概要](architecture.md) を参照する。
 - RAGの根拠行の形式や検索条件はRAG詳細設計を正とし、本書では重複定義しない。
 - `description` はRAG設計で使用するが、`products` テーブルへの追加はIssue #62で扱う。
-- `question_logs` の正式なDBスキーマとログ保持期間は未確定であり、本書では定義しない。
+- `question_logs` のDBスキーマは「#68 question_logs」に定義する(レビュー中)。ログの保持期間は未確定。
 
 ## 共通規則
 
@@ -57,6 +57,8 @@ DB制約で外部キー・必須・値の範囲を守り、フォームでも同
 新規登録時のuser_idは認証済みユーザーのIDをサーバーで設定し、リクエスト値を信用しない。NULL許可は退会後も自販機情報を残すためで、匿名投稿の許可ではない。退会後の表示は「退会済みユーザー」とする。更新者で登録者を書き換えない。
 
 写真パスは設定済みの写真ディスクで解決する。ディスク変更時は既存写真の移行も伴わせる。読めることを確認した保存パスを使い、ダミーのパスで本番登録を成立させない。
+
+投稿写真はAIによる商品情報の読み取りに使用し、他の利用者には公開しない。
 
 非表示フラグと報告履歴は#10で追加する。撤去報告で物理削除しない。
 
@@ -108,13 +110,41 @@ Eloquent標準の`sync()`/`updateExistingPivot()`は商品ID単位で操作す�
 | type | VARCHAR(32) NOT NULL | registration / update / rare_bonus |
 | points | INTEGER NOT NULL | 付与ポイント。点数は#53・#54の設定値から取得 |
 | vending_machine_id | unsigned BIGINT NULL FK | 自販機物理削除時SET NULL |
+| product_id | unsigned BIGINT NULL FK products.id | 初回発見者へ遡及するrare_bonusの商品。商品削除時SET NULL |
 | created_at | DATETIME NOT NULL | 付与日時。UTC |
 
 updated_atは持たない。モデルはcreated_atのみ自動設定する。user_id、created_atの個別インデックスと(user_id, created_at)の複合インデックスを設ける。#55の履歴検索用に(vending_machine_id, created_at)も設ける。typeの許容値をDBでも検証する。
 
 退会に伴い当該ユーザーの履歴は削除し、自販機が物理削除されても残存ユーザーの合計ポイントを変えない。通常の撤去は非表示なので外部キーは維持される。履歴を通常操作で書き換えない。
 
+新商品を販売する最初の1台には通常の登録点だけを付与し、レアボーナスは保留する。販売台数が1〜3台の間に、初回発見者とは別のユーザーが別の自販機で同じ商品を登録した時点で発見を確定し、1台目の発見者へrare_bonusを遡及付与する。付与日時は別ユーザーによる確認時点とし、商品ごとに1回だけ付与する。同じユーザーによる追加登録だけでは発見を確定せず、その登録者にも即時レアボーナスを付与しない。発見を確定した登録者と、確定後に登録前の販売台数が1〜3台の状態で登録したユーザーにはrare_bonusを即時付与する。本当に1台しか登録されない商品にはレアボーナスが付かないことと、同じ表記ゆれが別ユーザーに再登録された場合を完全には防げないことを、入力ミス対策との交換条件として受け入れる。
+
 付与の二重実行防止、登録・更新とポイントの同一トランザクション、7日判定、点数確定は#45・#53〜55で実装する。本書だけで二重付与防止が完了したとは扱わない。
+
+## #68 question_logs（レビュー中: Issue #68）
+
+| カラム | DB定義 | 規則 |
+|---|---|---|
+| id | unsigned BIGINT primary | 質問の記録ID |
+| user_id | unsigned BIGINT NOT NULL FK users.id | 質問したユーザー。ユーザー削除時CASCADE |
+| question | TEXT NOT NULL | 質問文(前後の空白を除いたもの。最大200文字は画面で検証) |
+| status | VARCHAR(32) NOT NULL | pending(枠を確保して答えを待っている) / answered / no_match / no_evidence / fallback / unavailable |
+| product_ids | JSON NOT NULL | しきい値を超えた商品ID(scoreの高い順) |
+| evidence | JSON NOT NULL | AIに渡した根拠の行(rag-design.mdの「根拠」の形) |
+| citations | JSON NOT NULL | AIが選んだ行(machine_id・product_id・price)。生成しなかったときは空 |
+| answer | TEXT NOT NULL | 画面に出した回答、またはお知らせの文章 |
+| error_reason | VARCHAR(64) NULL | 失敗の理由(retrieval_failed、rate_limit など)。成功時はNULL |
+| model | VARCHAR(255) NULL | 生成に使ったモデル。生成しなかったときはNULL |
+| prompt_version | VARCHAR(64) NULL | 生成の指示文の版。生成しなかったときはNULL |
+| top_score | FLOAT NULL | 検索の1位のscore。索引が空ならNULL |
+| duration_ms | unsigned INT NOT NULL | 処理時間(ミリ秒)。pending の間は0 |
+| created_at | DATETIME NOT NULL | 質問日時。UTC |
+
+updated_atは持たない。行は Cloudflare を呼ぶ前に status=pending で作り、答えが出たら1回だけ結果を書き込む。それ以降は書き換えない。created_atのインデックスと(user_id, created_at)の複合インデックスを設ける。
+
+1人が1日に質問できる回数は、日本時間の0時で区切って、このテーブルの件数で数える(上限は `CF_RAG_DAILY_LIMIT`、既定10回)。pending の行も数える。上限に達した質問は、Cloudflare を呼ばず、記録も残さない。
+
+枠の確保は、利用者の行をロック(`lockForUpdate`)したトランザクションの中で「件数を数える → 空きがあれば pending の行を作る」を行う。同じ利用者が同時に送っても、確保は1つずつ順番に行われるので上限を超えない。確保の処理そのものが失敗したときは、Cloudflare を呼ばずに unavailable を返す(安全側)。結果の書き込みに失敗した場合、行は pending のまま残り、回数には数えられたままになる。
 
 ## #25 モデルとリレーション
 
@@ -128,6 +158,7 @@ updated_atは持たない。モデルはcreated_atのみ自動設定する。use
 | Product | vendingMachines() | belongsToMany VendingMachine |
 | PointLog | user() | belongsTo User |
 | PointLog | vendingMachine() | belongsTo VendingMachine、物理削除後NULL |
+| PointLog | product() | belongsTo Product、商品物理削除後NULL |
 
 多対多は`machine_products`と両外部キー名を明示する。両方向で`withPivot(['id', 'price', 'temperature', 'recorded_at'])`を指定し、`withTimestamps()`は使わない。中間テーブルにupdated_atがないためである。
 
@@ -276,7 +307,6 @@ ID昇順で返す。`product_name`クエリパラメータは#49用に予約し�
 - #32: PR #108の地図JSONをレビュー中。マージ後に本書の「レビュー中」を「確定事項」へ更新する。
 - #52〜55: レア基準・点数・付与の重複防止。
 - #62: 商品説明。
-- #69: 投稿写真の他利用者への公開可否。非公開保存と期限付きURLだけで公開可否の承認済みとは扱わない。
 
 既定事項を変える必要が生じた場合は、変更対象／変更前／変更後案／変更理由／影響範囲を示す。未記載の実装細部の補完と、確定事項の変更を混同しない。
 
@@ -285,3 +315,4 @@ ID昇順で返す。`product_name`クエリパラメータは#49用に予約し�
 - v0.1（2026-10-17）: #20〜25を中心とした下書きを作成。
 - v0.2（2026-10-19）: mainへ統合済みの#21〜24を反映。AI読み取りJSON、PR #108の地図JSON、画面方式の検討候補、開発環境、仕様変更手順を追加。確定事項・レビュー中・未確定事項・検討候補を区別。
 - v0.2（2026-10-20）: PR #105のマージを反映し、#25のモデルをレビュー中からmain統合済みへ更新。確認したmainのコミットを更新。
+- v0.2（2026-10-23）: #68 question_logs をレビュー中として追加。

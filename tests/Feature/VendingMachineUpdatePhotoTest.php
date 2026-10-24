@@ -125,6 +125,17 @@ class VendingMachineUpdatePhotoTest extends TestCase
 
         $updated = $machine->fresh();
         $this->assertSame($owner->id, $updated->user_id);
+        $this->assertDatabaseHas('point_logs', [
+            'user_id' => $updater->id,
+            'vending_machine_id' => $machine->id,
+            'type' => 'update',
+            'points' => 5,
+        ]);
+        $this->assertDatabaseMissing('point_logs', [
+            'user_id' => $owner->id,
+            'vending_machine_id' => $machine->id,
+            'type' => 'update',
+        ]);
         $this->assertSame('33.5890000', $updated->latitude);
         $this->assertSame('130.3950000', $updated->longitude);
         $this->assertSame('suntory', $updated->maker);
@@ -362,7 +373,7 @@ class VendingMachineUpdatePhotoTest extends TestCase
             app(VendingMachineRegistrar::class)->update($machine, [
                 ['name' => '新規商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
                 ['name' => '新規商品', 'price' => 160, 'temperature' => 'cold', 'product_id' => null],
-            ], 'photos/new-machine.jpg');
+            ], 'photos/new-machine.jpg', auth()->user());
             $this->fail('同一商品・同一温冷区分は拒否されるはずです');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('rows', $exception->errors());
@@ -388,7 +399,7 @@ class VendingMachineUpdatePhotoTest extends TestCase
         app(VendingMachineRegistrar::class)->update($machine, [
             ['name' => '綾鷹', 'price' => 150, 'temperature' => 'cold', 'product_id' => null, 'new_volume_ml' => 525],
             ['name' => '綾鷹', 'price' => 160, 'temperature' => 'hot', 'product_id' => null, 'new_volume_ml' => 650],
-        ], 'photos/new-machine.jpg');
+        ], 'photos/new-machine.jpg', auth()->user());
 
         $newVolumeProduct = Product::where('name', '綾鷹')->where('volume_ml', 650)->sole();
         $this->assertSame(2, Product::where('name', '綾鷹')->count());

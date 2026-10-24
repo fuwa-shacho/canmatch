@@ -14,6 +14,7 @@ class PointLog extends Model
         'type',
         'points',
         'vending_machine_id',
+        'product_id',
     ];
 
     protected function casts(): array
@@ -32,5 +33,10 @@ class PointLog extends Model
     public function vendingMachine(): BelongsTo
     {
         return $this->belongsTo(VendingMachine::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Product;
+use App\Models\User;
 use App\Models\VendingMachine;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -10,7 +11,11 @@ use Illuminate\Validation\ValidationException;
 
 class VendingMachineRegistrar
 {
-    public function __construct(private ProductMatcher $matcher) {}
+    public function __construct(
+        private ProductMatcher $matcher,
+        private PointAwarder $pointAwarder,
+        private RareProductDetector $rareProductDetector,
+    ) {}
 
     /**
      * 自販機・商品・価格をまとめて保存する。途中で失敗したら全部取り消す。
@@ -27,15 +32,102 @@ class VendingMachineRegistrar
             $now = now();
 
             $machine = VendingMachine::create($attributes + ['last_confirmed_at' => $now]);
-            $this->attachRows($machine, $rows, $now);
+
+            // 同じ送信の中で同じ新商品(名前と容量)が複数行あっても、商品は1つだけ作る
+            $createdByName = [];
+            $registeredProducts = [];
+            $checkedRareProducts = [];
+            $containsRareProduct = false;
+            $retroactiveDiscoveries = [];
+
+            foreach ($rows as $row) {
+                $productId = $row['product_id'] ?? null;
+
+                if ($productId === null) {
+                    $name = $this->matcher->normalize($row['name']);
+                    $volume = self::volumeOf($row['new_volume_ml'] ?? null);
+                    $productId = $createdByName[$name.'|'.$volume] ??= $this->findOrCreateProduct($name, $volume);
+                } else {
+                    $productId = Product::query()->whereKey($productId)->value('id');
+
+                    if ($productId === null) {
+                        throw ValidationException::withMessages([
+                            'rows' => '選択した商品が見つかりません。候補から選び直してください。',
+                        ]);
+                    }
+                }
+
+                if (! isset($checkedRareProducts[$productId])) {
+                    $machineCount = $this->rareProductDetector->machineCount($productId);
+                    $withinRareRange = $machineCount >= 1
+                        && $machineCount <= $this->rareProductDetector->maximumMachineCount();
+                    $discoveryConfirmed = $withinRareRange
+                        && $this->rareProductDetector->hasConfirmedDiscovery($productId);
+                    $confirmedByCurrentRegistration = false;
+
+                    if ($withinRareRange && ! $discoveryConfirmed && $machine->user_id !== null) {
+                        $firstDiscovery = $this->rareProductDetector->firstDiscovery($productId);
+
+                        if ($firstDiscovery !== null
+                            && $firstDiscovery['user_id'] !== null
+                            && $firstDiscovery['user_id'] !== $machine->user_id) {
+                            $retroactiveDiscoveries[$productId] = $firstDiscovery;
+                            $confirmedByCurrentRegistration = true;
+                        }
+                    }
+
+                    $containsRareProduct = $containsRareProduct
+                        || $discoveryConfirmed
+                        || $confirmedByCurrentRegistration;
+
+                    $checkedRareProducts[$productId] = true;
+                }
+
+                $key = $productId.':'.$row['temperature'];
+
+                if (isset($registeredProducts[$key])) {
+                    throw ValidationException::withMessages([
+                        'rows' => '同じ商品・温冷区分は重複して登録できません。',
+                    ]);
+                }
+
+                $registeredProducts[$key] = true;
+
+                $machine->products()->attach($productId, [
+                    'price' => (int) $row['price'],
+                    'temperature' => $row['temperature'],
+                    'recorded_at' => $now,
+                ]);
+            }
+
+            if ($machine->user !== null) {
+                $this->pointAwarder->awardForRegistration($machine->user, $machine);
+
+                if ($containsRareProduct) {
+                    $this->pointAwarder->awardRareBonus($machine->user, $machine);
+                }
+
+                foreach ($retroactiveDiscoveries as $productId => $firstDiscovery) {
+                    $firstUser = User::query()->find($firstDiscovery['user_id']);
+                    $firstMachine = VendingMachine::query()->find($firstDiscovery['machine_id']);
+
+                    if ($firstUser !== null && $firstMachine !== null) {
+                        $this->pointAwarder->awardRetroactiveRareBonus(
+                            $firstUser,
+                            $firstMachine,
+                            Product::query()->findOrFail($productId),
+                        );
+                    }
+                }
+            }
 
             return $machine;
         });
     }
 
-    public function update(VendingMachine $machine, array $rows, string $photoPath): VendingMachine
+    public function update(VendingMachine $machine, array $rows, string $photoPath, User $updater): VendingMachine
     {
-        return DB::transaction(function () use ($machine, $rows, $photoPath) {
+        return DB::transaction(function () use ($machine, $rows, $photoPath, $updater) {
             $machine = VendingMachine::query()
                 ->whereKey($machine->getKey())
                 ->lockForUpdate()
@@ -49,6 +141,7 @@ class VendingMachineRegistrar
 
             $machine->products()->detach();
             $this->attachRows($machine, $rows, $now);
+            $this->pointAwarder->awardForUpdate($updater, $machine);
 
             return $machine->refresh();
         });

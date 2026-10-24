@@ -182,7 +182,7 @@ class VendingMachinesApiTest extends TestCase
             '130.4017155',
             '2026-10-20 06:00:00'
         );
-        $productId = $this->createProduct('開発用ドクターペッパー');
+        $productId = $this->createProduct('開発用ドクターペッパー', 650);
         $this->attachProduct($machineId, $productId, 'hot', 170, '2026-10-10 06:00:00');
         $this->attachProduct($machineId, $productId, 'cold', 150, '2026-10-19 06:00:00');
 
@@ -191,6 +191,7 @@ class VendingMachinesApiTest extends TestCase
             ->json('0');
 
         $this->assertSame([150, 170], array_column($machine['matched_products'], 'price'));
+        $this->assertSame([23.1, 26.2], array_column($machine['matched_products'], 'unit_price_per_100ml'));
         $this->assertSame(['cold', 'hot'], array_column($machine['matched_products'], 'temperature'));
         $this->assertSame([1, 10], array_column($machine['matched_products'], 'days_ago'));
         $this->assertSame(
@@ -200,12 +201,31 @@ class VendingMachinesApiTest extends TestCase
                 'product_name',
                 'volume_ml',
                 'price',
+                'unit_price_per_100ml',
                 'temperature',
                 'recorded_at',
                 'days_ago',
             ],
             array_keys($machine['matched_products'][0])
         );
+    }
+
+    public function test_product_search_unit_price_is_null_when_volume_is_unknown(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $machineId = $this->createVendingMachine(
+            '容量不明メーカー',
+            '33.5903547',
+            '130.4017155',
+            '2026-10-20 06:00:00'
+        );
+        $productId = $this->createProduct('開発用容量不明ドリンク');
+        $this->attachProduct($machineId, $productId, 'cold', 150);
+
+        $this->getJson('/api/vending-machines?product_name='.urlencode('容量不明ドリンク'))
+            ->assertOk()
+            ->assertJsonPath('0.matched_products.0.unit_price_per_100ml', null);
     }
 
     public function test_product_name_query_must_be_a_string_within_the_length_limit(): void
@@ -241,14 +261,14 @@ class VendingMachinesApiTest extends TestCase
         ]);
     }
 
-    private function createProduct(string $name): int
+    private function createProduct(string $name, ?int $volumeMl = null): int
     {
         $now = now()->utc();
 
         return DB::table('products')->insertGetId([
             'name' => $name,
             'maker' => null,
-            'volume_ml' => null,
+            'volume_ml' => $volumeMl,
             'category' => null,
             'created_at' => $now,
             'updated_at' => $now,

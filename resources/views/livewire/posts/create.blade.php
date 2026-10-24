@@ -67,14 +67,27 @@ new #[Layout('components.layouts.app')] class extends Component
         }
     }
 
-    public function setLocation(float $latitude, float $longitude): void
+    /**
+     * 位置を受け取る(GPS、または地図で選んだ位置)。範囲外なら保存せず false を返す
+     */
+    public function setLocation(float $latitude, float $longitude): bool
     {
         if ($this->machineId !== null) {
-            return;
+            return true;
         }
 
+        if (! is_finite($latitude) || ! is_finite($longitude)
+            || $latitude < -90 || $latitude > 90 || $longitude < -180 || $longitude > 180) {
+            $this->addError('latitude', '選択した位置が正しくありません。');
+
+            return false;
+        }
+
+        $this->resetErrorBag('latitude');
         $this->latitude = $latitude;
         $this->longitude = $longitude;
+
+        return true;
     }
 
     protected function messages(): array
@@ -462,7 +475,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
                 $machine = VendingMachine::query()->findOrFail($this->machineId);
                 $oldPhotoPath = $machine->photo_path;
-                $machine = $registrar->update($machine, $this->rows, $this->savedPath);
+                $machine = $registrar->update($machine, $this->rows, $this->savedPath, auth()->user());
             } else {
                 abort_if($this->latitude === null || $this->longitude === null, 422);
 
@@ -502,8 +515,20 @@ new #[Layout('components.layouts.app')] class extends Component
             return;
         }
 
+        $earnedPoints = $machine->pointLogs()
+            ->where('user_id', auth()->id())
+            ->orderBy('id')
+            ->get(['type', 'points'])
+            ->map->only(['type', 'points'])
+            ->all();
+
         session()->flash('status', '自販機を登録しました');
-        $this->redirectRoute('map', navigate: true);
+        session()->flash('earned_points', [
+            'vending_machine_id' => $machine->id,
+            'items' => $earnedPoints,
+        ]);
+
+        $this->redirectRoute('vending-machines.show', $machine, navigate: true);
     }
 
     private function deletePhoto(string $path): bool
@@ -536,27 +561,88 @@ new #[Layout('components.layouts.app')] class extends Component
         <form
             wire:submit="save"
             class="mt-6 flex max-w-md flex-col gap-6"
-            x-data="{ locationStatus: @js($machineId ? 'ok' : 'loading'), locationMessage: @js($machineId ? '登録済みの位置情報を維持します' : '現在地を取得しています...'), uploading: false }"
+            x-data="{
+                locationStatus: @js($machineId ? 'ok' : 'loading'),
+                locationMessage: @js($machineId ? '登録済みの位置情報を維持します' : '現在地を取得しています...'),
+                uploading: false,
+                fallbackMap: null,
+                fallbackMarker: null,
+                candidate: null,
+                showFallback(reason) {
+                    this.locationStatus = 'manual';
+                    this.locationMessage = reason + ' 地図をタップして自販機の位置を指定し、「この位置で確定」を押してください。';
+                    this.$nextTick(() => this.initFallbackMap());
+                },
+                initFallbackMap() {
+                    if (this.fallbackMap || !this.$refs.manualMap) return;
+                    // 表示の初期位置(福岡市中心部)。登録される位置ではない
+                    const start = [33.589, 130.395];
+                    const draw = () => {
+                        if (!window.L || !this.$refs.manualMap || this.fallbackMap) return;
+                        this.fallbackMap = L.map(this.$refs.manualMap).setView(start, 16);
+                        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            attribution: '&copy; OpenStreetMap contributors',
+                        }).addTo(this.fallbackMap);
+                        this.fallbackMap.on('click', (event) => {
+                            this.candidate = { lat: event.latlng.lat, lng: event.latlng.lng };
+                            if (this.fallbackMarker) this.fallbackMarker.setLatLng(event.latlng);
+                            else this.fallbackMarker = L.marker(event.latlng).addTo(this.fallbackMap);
+                        });
+                        setTimeout(() => this.fallbackMap?.invalidateSize(), 0);
+                    };
+                    if (window.L) { draw(); return; }
+                    if (!document.querySelector('link[data-manual-leaflet]')) {
+                        const css = document.createElement('link');
+                        css.rel = 'stylesheet';
+                        css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+                        css.dataset.manualLeaflet = '1';
+                        document.head.appendChild(css);
+                    }
+                    const existing = document.querySelector('script[data-manual-leaflet]');
+                    if (existing) { existing.addEventListener('load', draw, { once: true }); return; }
+                    const js = document.createElement('script');
+                    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                    js.dataset.manualLeaflet = '1';
+                    js.onload = draw;
+                    js.onerror = () => { this.locationMessage = '地図を読み込めませんでした。ページを再読み込みしてください。'; };
+                    document.head.appendChild(js);
+                },
+                async confirmFallback() {
+                    if (!this.candidate) return;
+                    try {
+                        const ok = await $wire.setLocation(this.candidate.lat, this.candidate.lng);
+                        if (!ok) {
+                            this.locationMessage = '選択した位置が正しくありません。もう一度タップしてください。';
+                            return;
+                        }
+                        this.locationStatus = 'ok';
+                        this.locationMessage = '地図で指定した位置を確定しました';
+                    } catch (e) {
+                        this.locationMessage = '指定した位置を保存できませんでした。もう一度お試しください。';
+                    }
+                },
+            }"
             x-init="
                 @unless ($machineId)
                 if (!navigator.geolocation) {
-                    locationStatus = 'error';
-                    locationMessage = 'この端末では位置情報が使えません';
+                    showFallback('この端末では現在地が使えません。');
                 } else {
                     navigator.geolocation.getCurrentPosition(
                         async (pos) => {
                             try {
-                                await $wire.setLocation(pos.coords.latitude, pos.coords.longitude);
-                                locationStatus = 'ok';
-                                locationMessage = '現在地を取得しました';
+                                if (await $wire.setLocation(pos.coords.latitude, pos.coords.longitude)) {
+                                    locationStatus = 'ok';
+                                    locationMessage = '現在地を取得しました';
+                                } else {
+                                    showFallback('現在地が正しく取得できませんでした。');
+                                }
                             } catch (e) {
-                                locationStatus = 'error';
-                                locationMessage = '現在地を送信できませんでした。もう一度お試しください';
+                                showFallback('現在地を送信できませんでした。');
                             }
                         },
                         () => {
-                            locationStatus = 'error';
-                            locationMessage = '現在地を取得できませんでした。位置情報の許可を確認してください';
+                            showFallback('現在地を取得できませんでした。');
                         },
                         { enableHighAccuracy: true, timeout: 15000 }
                     );
@@ -564,6 +650,20 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endunless
             "
         >
+            <aside
+                role="note"
+                class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100"
+            >
+                <h2 class="font-semibold">撮影時の注意と写真の利用について</h2>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                    <li>人の顔や車のナンバーが写らないようにしてください。</li>
+                    <li>私有地には入らないでください。</li>
+                    <li>歩きながら操作しないでください。</li>
+                    <li>投稿写真はAIによる商品情報の読み取りに使用します。</li>
+                    <li>投稿写真は他の利用者には公開されません。</li>
+                </ul>
+            </aside>
+
             <div
                 x-data="{
                     error: null,
@@ -656,8 +756,23 @@ new #[Layout('components.layouts.app')] class extends Component
                 <p
                     x-text="locationMessage"
                     class="text-sm"
-                    :class="locationStatus === 'error' ? 'text-red-500' : (locationStatus === 'ok' ? 'text-green-600' : 'text-zinc-500')"
+                    :class="locationStatus === 'error' ? 'text-red-500' : (locationStatus === 'ok' ? 'text-green-600' : (locationStatus === 'manual' ? 'text-amber-700 dark:text-amber-300' : 'text-zinc-500'))"
                 ></p>
+                <div x-show="locationStatus === 'manual'" x-cloak class="mt-3 space-y-2">
+                    <div
+                        x-ref="manualMap"
+                        wire:ignore
+                        class="h-72 w-full rounded-lg border border-zinc-300 dark:border-zinc-600"
+                        aria-label="自販機の位置を選ぶ地図"
+                    ></div>
+                    <button
+                        type="button"
+                        x-bind:disabled="!candidate"
+                        @click="confirmFallback()"
+                        class="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    >この位置で確定</button>
+                </div>
+                @error('latitude') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
             </div>
             @endunless
 
