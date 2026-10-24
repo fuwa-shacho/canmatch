@@ -1,4 +1,12 @@
 <x-layouts.app>
+    @php
+        $earnedPoints = session('earned_points');
+        $earnedPointItems = is_array($earnedPoints)
+            && ($earnedPoints['vending_machine_id'] ?? null) === $vendingMachine->id
+            ? ($earnedPoints['items'] ?? [])
+            : [];
+    @endphp
+
     <div class="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <div>
             <a href="{{ route('map') }}" class="text-sm text-blue-600 hover:underline dark:text-blue-400">
@@ -6,6 +14,38 @@
             </a>
             <h1 class="mt-2 text-2xl font-bold">自販機の詳細</h1>
         </div>
+
+        @if ($earnedPointItems !== [])
+            <section
+                role="status"
+                class="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-100"
+            >
+                <h2 class="text-lg font-semibold">
+                    今回 +{{ number_format(collect($earnedPointItems)->sum('points')) }}ポイント獲得しました
+                </h2>
+                <ul class="mt-2 space-y-1 text-sm">
+                    @foreach ($earnedPointItems as $item)
+                        <li class="flex justify-between gap-4">
+                            <span>
+                                {{ match ($item['type']) {
+                                    'registration' => '自販機の新規登録',
+                                    'update' => '自販機情報の更新',
+                                    'rare_bonus' => 'レア商品発見ボーナス',
+                                    default => 'ポイント',
+                                } }}
+                            </span>
+                            <span class="font-semibold">+{{ number_format($item['points']) }}ポイント</span>
+                        </li>
+                    @endforeach
+                </ul>
+                <a
+                    href="{{ route('ranking.index') }}"
+                    class="mt-3 inline-flex text-sm font-medium text-emerald-800 underline hover:no-underline dark:text-emerald-200"
+                >
+                    ランキングを見る
+                </a>
+            </section>
+        @endif
 
         <section class="rounded-xl border border-neutral-200 p-4 dark:border-neutral-700">
             <h2 class="text-lg font-semibold">基本情報</h2>

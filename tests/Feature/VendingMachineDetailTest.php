@@ -113,6 +113,44 @@ class VendingMachineDetailTest extends TestCase
             ->assertDontSee('100mlあたり');
     }
 
+    public function test_points_earned_by_registration_are_displayed_with_breakdown_and_ranking_link(): void
+    {
+        $viewer = User::factory()->create();
+        $machine = $this->createMachine($viewer);
+
+        $this->actingAs($viewer)
+            ->withSession([
+                'earned_points' => [
+                    'vending_machine_id' => $machine->id,
+                    'items' => [
+                        ['type' => 'registration', 'points' => 10],
+                        ['type' => 'rare_bonus', 'points' => 20],
+                    ],
+                ],
+            ])
+            ->get(route('vending-machines.show', $machine))
+            ->assertOk()
+            ->assertSee('今回 +30ポイント獲得しました')
+            ->assertSee('自販機の新規登録')
+            ->assertSee('+10ポイント')
+            ->assertSee('レア商品発見ボーナス')
+            ->assertSee('+20ポイント')
+            ->assertSee('ランキングを見る')
+            ->assertSee('href="'.route('ranking.index').'"', false);
+    }
+
+    public function test_earned_points_for_another_machine_are_not_displayed(): void
+    {
+        $viewer = User::factory()->create();
+        $machine = $this->createMachine($viewer);
+
+        $this->actingAs($viewer)
+            ->withSession(['earned_points' => ['vending_machine_id' => $machine->id + 1, 'items' => []]])
+            ->get(route('vending-machines.show', $machine))
+            ->assertOk()
+            ->assertDontSee('今回 +');
+    }
+
     public function test_unknown_machine_returns_not_found(): void
     {
         $viewer = User::factory()->create();

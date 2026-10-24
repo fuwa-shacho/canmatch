@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\PointLog;
 use App\Models\Product;
+use App\Models\User;
 use App\Models\VendingMachine;
 use App\Services\VendingMachineRegistrar;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
+use LogicException;
 use Tests\TestCase;
 
 class VendingMachineRegistrarTest extends TestCase
@@ -41,6 +44,55 @@ class VendingMachineRegistrarTest extends TestCase
             'price' => 150,
             'temperature' => 'cold',
         ]);
+    }
+
+    public function test_利用者の自販機登録と同じ処理で10ポイントを付与する(): void
+    {
+        $user = User::factory()->create();
+        $attributes = $this->attributes();
+        $attributes['user_id'] = $user->id;
+
+        $machine = app(VendingMachineRegistrar::class)->register($attributes, [
+            ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+        ]);
+
+        $this->assertDatabaseHas('point_logs', [
+            'user_id' => $user->id,
+            'vending_machine_id' => $machine->id,
+            'type' => 'registration',
+            'points' => 10,
+        ]);
+        $this->assertSame(1, PointLog::count());
+    }
+
+    public function test_利用者がない登録にはポイントを付与しない(): void
+    {
+        app(VendingMachineRegistrar::class)->register($this->attributes(), [
+            ['name' => 'お茶', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+        ]);
+
+        $this->assertSame(0, PointLog::count());
+    }
+
+    public function test_ポイント付与に失敗したら自販機と商品も取り消す(): void
+    {
+        config(['points.registration' => 0]);
+        $user = User::factory()->create();
+        $attributes = $this->attributes();
+        $attributes['user_id'] = $user->id;
+
+        try {
+            app(VendingMachineRegistrar::class)->register($attributes, [
+                ['name' => '新商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+            ]);
+            $this->fail('ポイント設定が不正なら失敗するはずです');
+        } catch (LogicException) {
+            $this->assertTrue(true);
+        }
+
+        $this->assertSame(0, VendingMachine::count());
+        $this->assertSame(0, Product::count());
+        $this->assertSame(0, PointLog::count());
     }
 
     public function test_新しい商品は容量が空で追加される(): void

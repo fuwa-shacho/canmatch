@@ -2,12 +2,12 @@
 
 use App\Exceptions\AiReadFailedException;
 use App\Services\ProductMatcher;
-use App\Services\VendingMachineRegistrar;
 use App\Services\VendingMachineReader;
+use App\Services\VendingMachineRegistrar;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use League\Flysystem\UnableToDeleteFile;
 use League\Flysystem\UnableToCheckFileExistence;
+use League\Flysystem\UnableToDeleteFile;
 use League\Flysystem\UnableToSetVisibility;
 use League\Flysystem\UnableToWriteFile;
 use Livewire\Attributes\Layout;
@@ -16,7 +16,8 @@ use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
-new #[Layout('components.layouts.app')] class extends Component {
+new #[Layout('components.layouts.app')] class extends Component
+{
     use WithFileUploads;
 
     #[Validate('required|image|max:2048')]
@@ -37,10 +38,15 @@ new #[Layout('components.layouts.app')] class extends Component {
     public ?string $savedPath = null;
 
     public ?string $notice = null;
+
     public ?string $previewUrl = null;
+
     public ?string $readError = null;
+
     public ?string $aiMaker = null;
+
     public array $rows = [];
+
     public bool $registered = false;
 
     /**
@@ -397,14 +403,13 @@ new #[Layout('components.layouts.app')] class extends Component {
             'rows.*.new_volume_ml.max' => '容量が大きすぎます',
         ]);
 
-
         abort_if(
             $this->savedPath === null || $this->latitude === null || $this->longitude === null,
             422
         );
 
         try {
-            app(VendingMachineRegistrar::class)->register([
+            $machine = app(VendingMachineRegistrar::class)->register([
                 'latitude' => $this->latitude,
                 'longitude' => $this->longitude,
                 'maker' => $this->maker === 'unknown' ? null : $this->maker,
@@ -420,10 +425,20 @@ new #[Layout('components.layouts.app')] class extends Component {
 
         $this->registered = true;
 
-        session()->flash('status', '自販機を登録しました');
+        $earnedPoints = $machine->pointLogs()
+            ->where('user_id', auth()->id())
+            ->orderBy('id')
+            ->get(['type', 'points'])
+            ->map->only(['type', 'points'])
+            ->all();
 
-        // 詳細ページができるまでの仮の遷移先。できたら machines.show などに差し替える
-        $this->redirectRoute('map', navigate: true);
+        session()->flash('status', '自販機を登録しました');
+        session()->flash('earned_points', [
+            'vending_machine_id' => $machine->id,
+            'items' => $earnedPoints,
+        ]);
+
+        $this->redirectRoute('vending-machines.show', $machine, navigate: true);
     }
 }; ?>
 
@@ -521,6 +536,20 @@ new #[Layout('components.layouts.app')] class extends Component {
                 }
             "
         >
+            <aside
+                role="note"
+                class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100"
+            >
+                <h2 class="font-semibold">撮影時の注意と写真の利用について</h2>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                    <li>人の顔や車のナンバーが写らないようにしてください。</li>
+                    <li>私有地には入らないでください。</li>
+                    <li>歩きながら操作しないでください。</li>
+                    <li>投稿写真はAIによる商品情報の読み取りに使用します。</li>
+                    <li>投稿写真は他の利用者には公開されません。</li>
+                </ul>
+            </aside>
+
             <div
                 x-data="{
                     error: null,
