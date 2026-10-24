@@ -443,8 +443,6 @@ new #[Layout('components.layouts.app')] class extends Component
                 }
             }
 
-            $this->failedUpdate(collect($e->errors())->flatten()->first());
-
             return;
         }
 
@@ -479,10 +477,6 @@ new #[Layout('components.layouts.app')] class extends Component
         } catch (ValidationException $e) {
             $message = $e->errors()['rows'][0] ?? '保存内容を確認してください。';
             $this->addError('rows', $message);
-
-            if ($this->machineId !== null) {
-                $this->failedUpdate($message);
-            }
 
             return;
         } catch (\Illuminate\Database\QueryException $e) {

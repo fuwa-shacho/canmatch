@@ -209,7 +209,7 @@ class VendingMachineUpdatePhotoTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_duplicate_update_rolls_back_everything_and_deletes_only_the_new_photo(): void
+    public function test_duplicate_update_keeps_review_photo_and_rolls_back_machine_data(): void
     {
         $oldPhoto = 'photos/old-machine.jpg';
         Storage::disk('photos')->put($oldPhoto, 'old photo');
@@ -236,9 +236,10 @@ class VendingMachineUpdatePhotoTest extends TestCase
         $newPhoto = $component->get('savedPath');
         $component->call('register')
             ->assertHasErrors('rows')
-            ->assertSet('savedPath', null);
+            ->assertSet('step', 'review')
+            ->assertSet('savedPath', $newPhoto);
 
-        Storage::disk('photos')->assertMissing($newPhoto);
+        Storage::disk('photos')->assertExists($newPhoto);
         Storage::disk('photos')->assertExists($oldPhoto);
         $this->assertSame($oldPhoto, $machine->fresh()->photo_path);
         $this->assertTrue($machine->fresh()->last_confirmed_at->equalTo('2026-10-01 12:00:00'));
@@ -252,7 +253,7 @@ class VendingMachineUpdatePhotoTest extends TestCase
         $this->assertDatabaseCount('machine_products', 1);
     }
 
-    public function test_invalid_update_input_deletes_new_photo_without_changing_old_machine_data(): void
+    public function test_invalid_update_input_keeps_photo_and_review_screen_without_changing_old_machine_data(): void
     {
         $oldPhoto = 'photos/old-machine.jpg';
         Storage::disk('photos')->put($oldPhoto, 'old photo');
@@ -276,9 +277,12 @@ class VendingMachineUpdatePhotoTest extends TestCase
         $component->set('rows.0.price', -1)
             ->call('register')
             ->assertHasErrors('rows.0.price')
-            ->assertSet('savedPath', null);
+            ->assertSet('step', 'review')
+            ->assertSet('savedPath', $newPhoto)
+            ->assertSet('rows.0.price', -1)
+            ->assertSee('更新内容を確認する');
 
-        Storage::disk('photos')->assertMissing($newPhoto);
+        Storage::disk('photos')->assertExists($newPhoto);
         Storage::disk('photos')->assertExists($oldPhoto);
         $this->assertSame($oldPhoto, $machine->fresh()->photo_path);
         $this->assertTrue($machine->fresh()->last_confirmed_at->equalTo('2026-10-01 12:00:00'));

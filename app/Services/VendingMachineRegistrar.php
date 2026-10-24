@@ -36,6 +36,10 @@ class VendingMachineRegistrar
     public function update(VendingMachine $machine, array $rows, string $photoPath): VendingMachine
     {
         return DB::transaction(function () use ($machine, $rows, $photoPath) {
+            $machine = VendingMachine::query()
+                ->whereKey($machine->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
             $now = now();
 
             $machine->update([
