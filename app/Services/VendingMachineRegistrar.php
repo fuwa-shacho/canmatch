@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Product;
+use App\Models\User;
 use App\Models\VendingMachine;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -12,6 +13,7 @@ class VendingMachineRegistrar
     public function __construct(
         private ProductMatcher $matcher,
         private PointAwarder $pointAwarder,
+        private RareProductDetector $rareProductDetector,
     ) {}
 
     /**
@@ -33,6 +35,9 @@ class VendingMachineRegistrar
             // 同じ送信の中で同じ新商品(名前と容量)が複数行あっても、商品は1つだけ作る
             $createdByName = [];
             $registeredProducts = [];
+            $checkedRareProducts = [];
+            $containsRareProduct = false;
+            $retroactiveDiscoveries = [];
 
             foreach ($rows as $row) {
                 $productId = $row['product_id'] ?? null;
@@ -49,6 +54,32 @@ class VendingMachineRegistrar
                             'rows' => '選択した商品が見つかりません。候補から選び直してください。',
                         ]);
                     }
+                }
+
+                if (! isset($checkedRareProducts[$productId])) {
+                    $machineCount = $this->rareProductDetector->machineCount($productId);
+                    $withinRareRange = $machineCount >= 1
+                        && $machineCount <= $this->rareProductDetector->maximumMachineCount();
+                    $discoveryConfirmed = $withinRareRange
+                        && $this->rareProductDetector->hasConfirmedDiscovery($productId);
+                    $confirmedByCurrentRegistration = false;
+
+                    if ($withinRareRange && ! $discoveryConfirmed && $machine->user_id !== null) {
+                        $firstDiscovery = $this->rareProductDetector->firstDiscovery($productId);
+
+                        if ($firstDiscovery !== null
+                            && $firstDiscovery['user_id'] !== null
+                            && $firstDiscovery['user_id'] !== $machine->user_id) {
+                            $retroactiveDiscoveries[$productId] = $firstDiscovery;
+                            $confirmedByCurrentRegistration = true;
+                        }
+                    }
+
+                    $containsRareProduct = $containsRareProduct
+                        || $discoveryConfirmed
+                        || $confirmedByCurrentRegistration;
+
+                    $checkedRareProducts[$productId] = true;
                 }
 
                 $key = $productId.':'.$row['temperature'];
@@ -70,6 +101,23 @@ class VendingMachineRegistrar
 
             if ($machine->user !== null) {
                 $this->pointAwarder->awardForRegistration($machine->user, $machine);
+
+                if ($containsRareProduct) {
+                    $this->pointAwarder->awardRareBonus($machine->user, $machine);
+                }
+
+                foreach ($retroactiveDiscoveries as $productId => $firstDiscovery) {
+                    $firstUser = User::query()->find($firstDiscovery['user_id']);
+                    $firstMachine = VendingMachine::query()->find($firstDiscovery['machine_id']);
+
+                    if ($firstUser !== null && $firstMachine !== null) {
+                        $this->pointAwarder->awardRetroactiveRareBonus(
+                            $firstUser,
+                            $firstMachine,
+                            Product::query()->findOrFail($productId),
+                        );
+                    }
+                }
             }
 
             return $machine;

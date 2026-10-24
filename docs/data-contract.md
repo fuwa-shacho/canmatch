@@ -110,11 +110,14 @@ Eloquent標準の`sync()`/`updateExistingPivot()`は商品ID単位で操作す�
 | type | VARCHAR(32) NOT NULL | registration / update / rare_bonus |
 | points | INTEGER NOT NULL | 付与ポイント。点数は#53・#54の設定値から取得 |
 | vending_machine_id | unsigned BIGINT NULL FK | 自販機物理削除時SET NULL |
+| product_id | unsigned BIGINT NULL FK products.id | 初回発見者へ遡及するrare_bonusの商品。商品削除時SET NULL |
 | created_at | DATETIME NOT NULL | 付与日時。UTC |
 
 updated_atは持たない。モデルはcreated_atのみ自動設定する。user_id、created_atの個別インデックスと(user_id, created_at)の複合インデックスを設ける。#55の履歴検索用に(vending_machine_id, created_at)も設ける。typeの許容値をDBでも検証する。
 
 退会に伴い当該ユーザーの履歴は削除し、自販機が物理削除されても残存ユーザーの合計ポイントを変えない。通常の撤去は非表示なので外部キーは維持される。履歴を通常操作で書き換えない。
+
+新商品を販売する最初の1台には通常の登録点だけを付与し、レアボーナスは保留する。販売台数が1〜3台の間に、初回発見者とは別のユーザーが別の自販機で同じ商品を登録した時点で発見を確定し、1台目の発見者へrare_bonusを遡及付与する。付与日時は別ユーザーによる確認時点とし、商品ごとに1回だけ付与する。同じユーザーによる追加登録だけでは発見を確定せず、その登録者にも即時レアボーナスを付与しない。発見を確定した登録者と、確定後に登録前の販売台数が1〜3台の状態で登録したユーザーにはrare_bonusを即時付与する。本当に1台しか登録されない商品にはレアボーナスが付かないことと、同じ表記ゆれが別ユーザーに再登録された場合を完全には防げないことを、入力ミス対策との交換条件として受け入れる。
 
 付与の二重実行防止、登録・更新とポイントの同一トランザクション、7日判定、点数確定は#45・#53〜55で実装する。本書だけで二重付与防止が完了したとは扱わない。
 
@@ -155,6 +158,7 @@ updated_atは持たない。行は Cloudflare を呼ぶ前に status=pending で
 | Product | vendingMachines() | belongsToMany VendingMachine |
 | PointLog | user() | belongsTo User |
 | PointLog | vendingMachine() | belongsTo VendingMachine、物理削除後NULL |
+| PointLog | product() | belongsTo Product、商品物理削除後NULL |
 
 多対多は`machine_products`と両外部キー名を明示する。両方向で`withPivot(['id', 'price', 'temperature', 'recorded_at'])`を指定し、`withTimestamps()`は使わない。中間テーブルにupdated_atがないためである。
 

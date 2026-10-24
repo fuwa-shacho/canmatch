@@ -49,14 +49,16 @@ class ModelRelationsTest extends TestCase
         $this->assertTrue($product->vendingMachines->contains($machine));
     }
 
-    public function test_point_log_can_retrieve_user_and_vending_machine(): void
+    public function test_point_log_can_retrieve_user_vending_machine_and_product(): void
     {
         $user = User::factory()->create();
         $machine = $this->createVendingMachine($user);
-        $pointLog = $this->createPointLog($user, $machine);
+        $product = $this->createProduct();
+        $pointLog = $this->createPointLog($user, $machine, product: $product);
 
         $this->assertTrue($pointLog->user->is($user));
         $this->assertTrue($pointLog->vendingMachine->is($machine));
+        $this->assertTrue($pointLog->product->is($product));
     }
 
     public function test_hot_and_cold_rows_are_retrieved_in_both_directions_with_cast_pivot_values(): void
@@ -170,13 +172,18 @@ class ModelRelationsTest extends TestCase
         ]);
     }
 
-    private function createPointLog(User $user, ?VendingMachine $machine = null, int $points = 10): PointLog
-    {
+    private function createPointLog(
+        User $user,
+        ?VendingMachine $machine = null,
+        int $points = 10,
+        ?Product $product = null,
+    ): PointLog {
         return PointLog::query()->create([
             'user_id' => $user->id,
             'type' => 'registration',
             'points' => $points,
             'vending_machine_id' => $machine?->id,
+            'product_id' => $product?->id,
         ]);
     }
 
