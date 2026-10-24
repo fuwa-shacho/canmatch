@@ -58,18 +58,26 @@ class VendingMachineRegistrar
 
                 if (! isset($checkedRareProducts[$productId])) {
                     $machineCount = $this->rareProductDetector->machineCount($productId);
-                    $containsRareProduct = $containsRareProduct
-                        || ($machineCount >= 1 && $machineCount <= $this->rareProductDetector->maximumMachineCount());
+                    $withinRareRange = $machineCount >= 1
+                        && $machineCount <= $this->rareProductDetector->maximumMachineCount();
+                    $discoveryConfirmed = $withinRareRange
+                        && $this->rareProductDetector->hasConfirmedDiscovery($productId);
+                    $confirmedByCurrentRegistration = false;
 
-                    if ($machineCount === 1 && $machine->user_id !== null) {
+                    if ($withinRareRange && ! $discoveryConfirmed && $machine->user_id !== null) {
                         $firstDiscovery = $this->rareProductDetector->firstDiscovery($productId);
 
                         if ($firstDiscovery !== null
                             && $firstDiscovery['user_id'] !== null
                             && $firstDiscovery['user_id'] !== $machine->user_id) {
                             $retroactiveDiscoveries[$productId] = $firstDiscovery;
+                            $confirmedByCurrentRegistration = true;
                         }
                     }
+
+                    $containsRareProduct = $containsRareProduct
+                        || $discoveryConfirmed
+                        || $confirmedByCurrentRegistration;
 
                     $checkedRareProducts[$productId] = true;
                 }

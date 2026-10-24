@@ -69,6 +69,7 @@ class VendingMachineRegistrarTest extends TestCase
     public function test_レア商品を含む登録では通常点とボーナスを付与する(): void
     {
         $user = User::factory()->create();
+        $firstFinder = User::factory()->create();
         $product = Product::create(['name' => 'レア商品', 'volume_ml' => 500]);
         $otherRareProduct = Product::create(['name' => '別のレア商品', 'volume_ml' => 350]);
         $attributes = $this->attributes();
@@ -79,6 +80,7 @@ class VendingMachineRegistrarTest extends TestCase
                 'latitude' => 33.5800000 + ($index / 10000),
                 'longitude' => 130.3900000 + ($index / 10000),
                 'photo_path' => "photos/existing-{$index}.jpg",
+                'user_id' => $index === 1 ? $firstFinder->id : null,
                 'last_confirmed_at' => now(),
             ]);
             DB::table('machine_products')->insert([
@@ -106,7 +108,13 @@ class VendingMachineRegistrarTest extends TestCase
             'type' => 'rare_bonus',
             'points' => 20,
         ]);
-        $this->assertSame(1, PointLog::where('type', 'rare_bonus')->count());
+        $this->assertDatabaseHas('point_logs', [
+            'user_id' => $firstFinder->id,
+            'product_id' => $product->id,
+            'type' => 'rare_bonus',
+            'points' => 20,
+        ]);
+        $this->assertSame(2, PointLog::where('type', 'rare_bonus')->count());
     }
 
     public function test_新商品の1台目は通常点だけを付与する(): void
@@ -178,7 +186,54 @@ class VendingMachineRegistrarTest extends TestCase
         ]);
 
         $this->assertSame(0, PointLog::where('product_id', $product->id)->count());
-        $this->assertSame(1, PointLog::where('type', 'rare_bonus')->count());
+        $this->assertSame(0, PointLog::where('type', 'rare_bonus')->count());
+    }
+
+    public function test_同じユーザーの2台目の後でも別ユーザーが登録すれば初回発見を確定する(): void
+    {
+        $firstUser = User::factory()->create();
+        $confirmingUser = User::factory()->create();
+        $firstAttributes = $this->attributes();
+        $firstAttributes['user_id'] = $firstUser->id;
+
+        $firstMachine = app(VendingMachineRegistrar::class)->register($firstAttributes, [
+            ['name' => '後から確認された商品', 'price' => 150, 'temperature' => 'cold', 'product_id' => null],
+        ]);
+        $product = Product::where('name', '後から確認された商品')->firstOrFail();
+
+        $secondAttributes = $this->attributes();
+        $secondAttributes['latitude'] = 33.6000000;
+        $secondAttributes['longitude'] = 130.4100000;
+        $secondAttributes['user_id'] = $firstUser->id;
+        app(VendingMachineRegistrar::class)->register($secondAttributes, [
+            ['name' => $product->name, 'price' => 155, 'temperature' => 'cold', 'product_id' => $product->id],
+        ]);
+
+        $this->assertSame(0, PointLog::where('type', 'rare_bonus')->count());
+
+        $thirdAttributes = $this->attributes();
+        $thirdAttributes['latitude'] = 33.6100000;
+        $thirdAttributes['longitude'] = 130.4200000;
+        $thirdAttributes['user_id'] = $confirmingUser->id;
+        $thirdMachine = app(VendingMachineRegistrar::class)->register($thirdAttributes, [
+            ['name' => $product->name, 'price' => 160, 'temperature' => 'cold', 'product_id' => $product->id],
+        ]);
+
+        $this->assertDatabaseHas('point_logs', [
+            'user_id' => $firstUser->id,
+            'vending_machine_id' => $firstMachine->id,
+            'product_id' => $product->id,
+            'type' => 'rare_bonus',
+            'points' => 20,
+        ]);
+        $this->assertDatabaseHas('point_logs', [
+            'user_id' => $confirmingUser->id,
+            'vending_machine_id' => $thirdMachine->id,
+            'product_id' => null,
+            'type' => 'rare_bonus',
+            'points' => 20,
+        ]);
+        $this->assertSame(2, PointLog::where('type', 'rare_bonus')->count());
     }
 
     public function test_通常商品の登録ではレアボーナスを付与しない(): void
@@ -246,11 +301,13 @@ class VendingMachineRegistrarTest extends TestCase
     {
         config(['points.rare_bonus' => 0]);
         $user = User::factory()->create();
+        $firstFinder = User::factory()->create();
         $product = Product::create(['name' => '既存のレア商品']);
         $existingMachine = VendingMachine::create([
             'latitude' => 33.5800000,
             'longitude' => 130.3900000,
             'photo_path' => 'photos/existing-rare.jpg',
+            'user_id' => $firstFinder->id,
             'last_confirmed_at' => now(),
         ]);
         DB::table('machine_products')->insert([

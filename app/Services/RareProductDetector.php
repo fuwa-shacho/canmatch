@@ -43,6 +43,14 @@ class RareProductDetector
         ];
     }
 
+    public function hasConfirmedDiscovery(int $productId): bool
+    {
+        return DB::table('point_logs')
+            ->where('type', 'rare_bonus')
+            ->where('product_id', $productId)
+            ->exists();
+    }
+
     public function soldRareProductIds(): Builder
     {
         return DB::table('machine_products')
