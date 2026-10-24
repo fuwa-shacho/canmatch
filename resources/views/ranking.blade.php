@@ -30,6 +30,27 @@
             >週間</a>
         </nav>
 
+        <section class="rounded-xl border border-neutral-200 p-4 dark:border-neutral-700" aria-labelledby="self-ranking-heading">
+            <h2 id="self-ranking-heading" class="text-sm font-semibold text-zinc-600 dark:text-zinc-300">あなたの順位</h2>
+
+            @if ($selfRanking['rank'] === null)
+                <p class="mt-2 text-lg font-bold">順位なし・0 pt</p>
+                <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">この期間には、まだポイントを獲得していません。</p>
+            @else
+                <p class="mt-2 text-lg font-bold">
+                    {{ $selfRanking['rank'] }}位・{{ number_format($selfRanking['total_points']) }} pt
+                </p>
+
+                @if ($selfRanking['points_to_next_rank'] === null)
+                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">現在1位です。</p>
+                @else
+                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                        1つ上の順位まであと{{ number_format($selfRanking['points_to_next_rank']) }}ポイントです。
+                    </p>
+                @endif
+            @endif
+        </section>
+
         @if ($ranking->isEmpty())
             <div class="rounded-xl border border-neutral-200 p-6 text-center text-zinc-600 dark:border-neutral-700 dark:text-zinc-300">
                 {{ $period === 'weekly' ? '今週' : 'まだ' }}ポイントを獲得したユーザーはいません。

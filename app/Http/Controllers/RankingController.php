@@ -26,12 +26,14 @@ class RankingController extends Controller
             ->groupBy('users.id', 'users.name')
             ->orderByDesc('total_points')
             ->orderBy('users.name')
-            ->orderBy('users.id')
-            ->limit(20);
+            ->orderBy('users.id');
+
+        $rankedUsers = $this->addRanks($query->get());
 
         return view('ranking', [
             'period' => $period,
-            'ranking' => $this->addRanks($query->get()),
+            'ranking' => $rankedUsers->take(20)->values(),
+            'selfRanking' => $this->selfRanking($rankedUsers, $request->user()->id),
         ]);
     }
 
@@ -64,5 +66,40 @@ class RankingController extends Controller
                 'total_points' => $totalPoints,
             ];
         });
+    }
+
+    /**
+     * @param  Collection<int, array{rank: int, user_id: int, name: string, total_points: int}>  $ranking
+     * @return array{rank: int|null, total_points: int, points_to_next_rank: int|null}
+     */
+    private function selfRanking(Collection $ranking, int $userId): array
+    {
+        $self = $ranking->firstWhere('user_id', $userId);
+
+        if ($self === null) {
+            return [
+                'rank' => null,
+                'total_points' => 0,
+                'points_to_next_rank' => null,
+            ];
+        }
+
+        if ($self['rank'] === 1) {
+            return [
+                'rank' => 1,
+                'total_points' => $self['total_points'],
+                'points_to_next_rank' => null,
+            ];
+        }
+
+        $nextHigher = $ranking
+            ->where('total_points', '>', $self['total_points'])
+            ->last();
+
+        return [
+            'rank' => $self['rank'],
+            'total_points' => $self['total_points'],
+            'points_to_next_rank' => $nextHigher['total_points'] - $self['total_points'],
+        ];
     }
 }
