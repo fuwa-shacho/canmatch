@@ -11,10 +11,10 @@
                     {{ auth()->user()->name }} さん、ようこそ
                 </p>
                 <h1 class="text-2xl font-bold leading-snug">
-                    飲みたい1本が、どの自販機にあるか分かる
+                    <span class="inline-block">あなたの「飲みたい」に</span><span class="inline-block">マッチ！</span>
                 </h1>
                 <p class="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
-                    自販機の写真を撮るだけで、AIが商品と価格を読み取ります。みんなで登録した情報から、近くの自販機や安い1本、珍しい商品を探せます。
+                    身近な自販機を写真に撮って、見つけた飲み物をシェアしましょう！<br class="hidden sm:inline" />近い、安い、珍しい一本を、あなたのために探します！
                 </p>
             </div>
         </section>
@@ -34,27 +34,47 @@
             </div>
         </section>
 
-        <section class="grid gap-3 sm:grid-cols-2" aria-label="できること">
+        <div class="grid gap-6 sm:grid-cols-2">
             @foreach ([
-                ['href' => route('map'), 'icon' => 'map', 'title' => '地図で探す', 'text' => '商品名で絞り込み、安い順に比べられます'],
-                ['href' => route('posts.create'), 'icon' => 'camera', 'title' => '自販機を登録する', 'text' => '写真を撮ると、AIが商品と価格を読み取ります'],
-                ['href' => route('rare-products.index'), 'icon' => 'star', 'title' => 'レア商品', 'text' => '取り扱いの少ない、珍しい商品を見つけられます'],
-                ['href' => route('ranking.index'), 'icon' => 'trophy', 'title' => 'ランキング', 'text' => '登録でたまったポイントの順位を見られます'],
-            ] as $item)
-                <a
-                    href="{{ $item['href'] }}"
-                    wire:navigate
-                    class="group flex items-start gap-4 rounded-xl border border-neutral-200 p-4 transition hover:border-neutral-400 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:border-neutral-500 dark:hover:bg-neutral-800"
-                >
-                    <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800">
-                        <flux:icon :name="$item['icon']" class="size-5" />
-                    </span>
-                    <span class="flex flex-col gap-1">
-                        <span class="font-semibold">{{ $item['title'] }}</span>
-                        <span class="text-sm text-neutral-600 dark:text-neutral-300">{{ $item['text'] }}</span>
-                    </span>
-                </a>
+                [
+                    'heading' => '見つけて、シェアする',
+                    'lead' => '登録するほどポイントがたまります',
+                    'items' => [
+                        ['href' => route('posts.create'), 'icon' => 'camera', 'title' => '自販機を登録する', 'text' => '写真を撮るだけ。商品と値段はAIが読み取ります'],
+                        ['href' => route('ranking.index'), 'icon' => 'trophy', 'title' => 'ランキング', 'text' => '今週いちばん見つけたのは誰？'],
+                    ],
+                ],
+                [
+                    'heading' => '探して、比べる',
+                    'lead' => 'みんなが見つけた一本から探せます',
+                    'items' => [
+                        ['href' => route('map'), 'icon' => 'map', 'title' => '地図で探す', 'text' => '飲みたい商品の名前で、近くて安い自販機を探そう'],
+                        ['href' => route('rare-products.index'), 'icon' => 'star', 'title' => 'レア商品', 'text' => 'なかなか見かけない一本は、ここにあります'],
+                    ],
+                ],
+            ] as $group)
+                <section class="flex flex-col gap-3" aria-label="{{ $group['heading'] }}">
+                    <div>
+                        <h2 class="text-lg font-bold">{{ $group['heading'] }}</h2>
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $group['lead'] }}</p>
+                    </div>
+                    @foreach ($group['items'] as $item)
+                        <a
+                            href="{{ $item['href'] }}"
+                            wire:navigate
+                            class="group flex items-start gap-4 rounded-xl border border-neutral-200 p-4 transition hover:border-neutral-400 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:border-neutral-500 dark:hover:bg-neutral-800"
+                        >
+                            <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800">
+                                <flux:icon :name="$item['icon']" class="size-5" />
+                            </span>
+                            <span class="flex flex-col gap-1">
+                                <span class="font-semibold">{{ $item['title'] }}</span>
+                                <span class="text-sm text-neutral-600 dark:text-neutral-300">{{ $item['text'] }}</span>
+                            </span>
+                        </a>
+                    @endforeach
+                </section>
             @endforeach
-        </section>
+        </div>
     </div>
 </x-layouts.app>
