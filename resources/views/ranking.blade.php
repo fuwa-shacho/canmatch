@@ -1,15 +1,38 @@
 <x-layouts.app>
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <div>
-            <h1 class="text-2xl font-bold">総合ランキング</h1>
+            <h1 class="text-2xl font-bold">ランキング</h1>
             <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-                これまでに獲得したポイントの上位20人です。
+                {{ $period === 'weekly' ? '今週獲得したポイント' : 'これまでに獲得したポイント' }}の上位20人です。
             </p>
         </div>
 
+        <nav aria-label="ランキングの期間" class="flex gap-2">
+            <a
+                href="{{ route('ranking.index') }}"
+                wire:navigate
+                @class([
+                    'rounded-lg px-4 py-2 text-sm font-semibold',
+                    'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $period === 'overall',
+                    'border border-neutral-300 dark:border-neutral-600' => $period !== 'overall',
+                ])
+                @if ($period === 'overall') aria-current="page" @endif
+            >総合</a>
+            <a
+                href="{{ route('ranking.index', ['period' => 'weekly']) }}"
+                wire:navigate
+                @class([
+                    'rounded-lg px-4 py-2 text-sm font-semibold',
+                    'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $period === 'weekly',
+                    'border border-neutral-300 dark:border-neutral-600' => $period !== 'weekly',
+                ])
+                @if ($period === 'weekly') aria-current="page" @endif
+            >週間</a>
+        </nav>
+
         @if ($ranking->isEmpty())
             <div class="rounded-xl border border-neutral-200 p-6 text-center text-zinc-600 dark:border-neutral-700 dark:text-zinc-300">
-                まだポイントを獲得したユーザーはいません。
+                {{ $period === 'weekly' ? '今週' : 'まだ' }}ポイントを獲得したユーザーはいません。
             </div>
         @else
             <div class="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-700">
