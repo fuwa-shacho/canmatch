@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * 質問の記録(Issue 68)
  *
  * ある回答が、どの商品とどの自販機のデータから作られたかを後から追えるようにする。
- * 記録は書き換えない(updated_at は持たない)。
+ * 質問を受け付けた時点(Cloudflare を呼ぶ前)に status=pending で作り、答えが出たら1回だけ結果を書き込む。
+ * それ以降は書き換えない(updated_at は持たない)。
  */
 class QuestionLog extends Model
 {

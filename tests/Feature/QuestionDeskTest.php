@@ -199,4 +199,98 @@ class QuestionDeskTest extends TestCase
 
         $this->assertSame(3, QuestionLog::count());
     }
+
+    public function test_the_slot_is_reserved_before_calling_cloudflare(): void
+    {
+        $user = User::factory()->create();
+        $mock = Mockery::mock(QuestionAnswerer::class);
+        $mock->shouldReceive('answer')->once()->andReturnUsing(function (): array {
+            // Cloudflare を呼ぶ時点で、すでに枠が1回分数えられている
+            $this->assertSame(1, QuestionLog::count());
+            $this->assertSame(QuestionDesk::PENDING, QuestionLog::sole()->status);
+
+            return $this->answered();
+        });
+        $this->app->instance(QuestionAnswerer::class, $mock);
+
+        app(QuestionDesk::class)->ask($user, '甘くない炭酸');
+
+        $this->assertSame('answered', QuestionLog::sole()->status);
+    }
+
+    public function test_a_second_request_while_the_first_is_running_cannot_use_the_last_slot(): void
+    {
+        $user = User::factory()->create();
+        foreach (range(1, 2) as $i) {
+            $this->logAt($user, '2026-10-22 01:00:00');
+        }
+
+        $secondResult = null;
+        $mock = Mockery::mock(QuestionAnswerer::class);
+        $mock->shouldReceive('answer')->once()->andReturnUsing(function () use ($user, &$secondResult): array {
+            // 1回目が Cloudflare を待っている間に、同じ人から2回目が届いた場合
+            $secondResult = app(QuestionDesk::class)->ask($user, '2回目の質問');
+
+            return $this->answered();
+        });
+        $this->app->instance(QuestionAnswerer::class, $mock);
+
+        $first = app(QuestionDesk::class)->ask($user, '1回目の質問');
+
+        $this->assertSame('answered', $first['status']);
+        $this->assertSame('limited', $secondResult['status']);
+        $this->assertSame(3, QuestionLog::count());
+    }
+
+    public function test_cloudflare_is_not_called_when_the_slot_cannot_be_recorded(): void
+    {
+        $user = User::factory()->create();
+        $this->fakeAnswerer(times: 0);
+        QuestionLog::creating(function (): void {
+            throw new \RuntimeException('開発用: 記録できない');
+        });
+
+        $result = app(QuestionDesk::class)->ask($user, '甘くない炭酸');
+
+        $this->assertSame('unavailable', $result['status']);
+        $this->assertSame(QuestionAnswerer::UNAVAILABLE, $result['answer']);
+        $this->assertSame(0, QuestionLog::count());
+    }
+
+    public function test_the_slot_stays_counted_when_saving_the_result_fails(): void
+    {
+        $user = User::factory()->create();
+        $this->fakeAnswerer(times: 3);
+        QuestionLog::updating(function (): void {
+            throw new \RuntimeException('開発用: 結果を書き込めない');
+        });
+
+        foreach (range(1, 3) as $i) {
+            $this->assertSame('answered', app(QuestionDesk::class)->ask($user, '甘くない炭酸')['status']);
+        }
+
+        // 結果の書き込みに失敗しても、枠は数えられているので4回目は断る
+        $this->assertSame('limited', app(QuestionDesk::class)->ask($user, '甘くない炭酸')['status']);
+        $this->assertSame(3, QuestionLog::where('status', QuestionDesk::PENDING)->count());
+    }
+
+    public function test_an_unexpected_error_is_recorded_and_still_counted(): void
+    {
+        $user = User::factory()->create();
+        $mock = Mockery::mock(QuestionAnswerer::class);
+        $mock->shouldReceive('answer')->once()->andThrow(new \RuntimeException('開発用: 想定外のエラー'));
+        $this->app->instance(QuestionAnswerer::class, $mock);
+
+        try {
+            app(QuestionDesk::class)->ask($user, '甘くない炭酸');
+            $this->fail('例外が投げ直されるはずです');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('開発用: 想定外のエラー', $e->getMessage());
+        }
+
+        $log = QuestionLog::sole();
+        $this->assertSame('unavailable', $log->status);
+        $this->assertSame('exception', $log->error_reason);
+        $this->assertSame(2, QuestionDesk::remainingToday($user));
+    }
 }

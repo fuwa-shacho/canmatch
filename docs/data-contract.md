@@ -123,7 +123,7 @@ updated_atは持たない。モデルはcreated_atのみ自動設定する。use
 | id | unsigned BIGINT primary | 質問の記録ID |
 | user_id | unsigned BIGINT NOT NULL FK users.id | 質問したユーザー。ユーザー削除時CASCADE |
 | question | TEXT NOT NULL | 質問文(前後の空白を除いたもの。最大200文字は画面で検証) |
-| status | VARCHAR(32) NOT NULL | answered / no_match / no_evidence / fallback / unavailable |
+| status | VARCHAR(32) NOT NULL | pending(枠を確保して答えを待っている) / answered / no_match / no_evidence / fallback / unavailable |
 | product_ids | JSON NOT NULL | しきい値を超えた商品ID(scoreの高い順) |
 | evidence | JSON NOT NULL | AIに渡した根拠の行(rag-design.mdの「根拠」の形) |
 | citations | JSON NOT NULL | AIが選んだ行(machine_id・product_id・price)。生成しなかったときは空 |
@@ -132,12 +132,14 @@ updated_atは持たない。モデルはcreated_atのみ自動設定する。use
 | model | VARCHAR(255) NULL | 生成に使ったモデル。生成しなかったときはNULL |
 | prompt_version | VARCHAR(64) NULL | 生成の指示文の版。生成しなかったときはNULL |
 | top_score | FLOAT NULL | 検索の1位のscore。索引が空ならNULL |
-| duration_ms | unsigned INT NOT NULL | 処理時間(ミリ秒) |
+| duration_ms | unsigned INT NOT NULL | 処理時間(ミリ秒)。pending の間は0 |
 | created_at | DATETIME NOT NULL | 質問日時。UTC |
 
-updated_atは持たない。記録は書き換えない。created_atのインデックスと(user_id, created_at)の複合インデックスを設ける。
+updated_atは持たない。行は Cloudflare を呼ぶ前に status=pending で作り、答えが出たら1回だけ結果を書き込む。それ以降は書き換えない。created_atのインデックスと(user_id, created_at)の複合インデックスを設ける。
 
-1人が1日に質問できる回数は、日本時間の0時で区切って、このテーブルの件数で数える(上限は `CF_RAG_DAILY_LIMIT`、既定10回)。上限に達した質問は、Cloudflare を呼ばず、記録も残さない。
+1人が1日に質問できる回数は、日本時間の0時で区切って、このテーブルの件数で数える(上限は `CF_RAG_DAILY_LIMIT`、既定10回)。pending の行も数える。上限に達した質問は、Cloudflare を呼ばず、記録も残さない。
+
+枠の確保は、利用者の行をロック(`lockForUpdate`)したトランザクションの中で「件数を数える → 空きがあれば pending の行を作る」を行う。同じ利用者が同時に送っても、確保は1つずつ順番に行われるので上限を超えない。確保の処理そのものが失敗したときは、Cloudflare を呼ばずに unavailable を返す(安全側)。結果の書き込みに失敗した場合、行は pending のまま残り、回数には数えられたままになる。
 
 ## #25 モデルとリレーション
 
