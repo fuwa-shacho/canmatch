@@ -59,7 +59,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $id = $machine ?? request()->integer('machine');
 
         if ($id > 0) {
-            $existing = VendingMachine::findOrFail($id);
+            $existing = VendingMachine::query()->findOrFail($id);
             $this->machineId = $existing->id;
             $this->latitude = (float) $existing->latitude;
             $this->longitude = (float) $existing->longitude;
@@ -460,7 +460,9 @@ new #[Layout('components.layouts.app')] class extends Component
             $registrar = app(VendingMachineRegistrar::class);
 
             if ($this->machineId !== null) {
-                $machine = VendingMachine::findOrFail($this->machineId);
+                abort_unless(auth()->check(), 401);
+
+                $machine = VendingMachine::query()->findOrFail($this->machineId);
                 $oldPhotoPath = $machine->photo_path;
                 $machine = $registrar->update($machine, $this->rows, $this->savedPath);
             } else {

@@ -9,6 +9,7 @@ use App\Services\VendingMachineReader;
 use App\Services\VendingMachineRegistrar;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Livewire\Volt\Volt;
@@ -74,6 +75,10 @@ class VendingMachineUpdatePhotoTest extends TestCase
         $updated = $machine->fresh();
         $this->assertSame($newPhoto, $updated->photo_path);
         $this->assertTrue($updated->last_confirmed_at->equalTo(now()));
+        $this->assertSame(auth()->id(), $updated->user_id);
+        $this->assertSame('33.5890000', $updated->latitude);
+        $this->assertSame('130.3950000', $updated->longitude);
+        $this->assertSame('suntory', $updated->maker);
         $this->assertDatabaseMissing('machine_products', [
             'vending_machine_id' => $machine->id,
             'product_id' => $oldProduct->id,
@@ -98,6 +103,110 @@ class VendingMachineUpdatePhotoTest extends TestCase
             ->assertSee('160円')
             ->assertSee('0日前の情報')
             ->assertDontSee('古い商品');
+    }
+
+    public function test_another_authenticated_user_can_update_machine_without_changing_original_owner(): void
+    {
+        $owner = User::factory()->create();
+        $updater = User::factory()->create();
+        $machine = $this->createMachine('photos/old-machine.jpg', '2026-10-01 12:00:00', $owner);
+        $this->actingAs($updater);
+        $product = Product::create(['name' => '更新後の商品']);
+        $this->mockReader([
+            ['name' => '更新後の商品', 'price' => 150, 'temperature' => 'cold'],
+        ]);
+
+        $component = Volt::test('posts.create', ['machine' => $machine->id])
+            ->set('photo', UploadedFile::fake()->image('new-machine.jpg'))
+            ->call('save')
+            ->call('register')
+            ->assertHasNoErrors()
+            ->assertRedirect(route('vending-machines.show', $machine));
+
+        $updated = $machine->fresh();
+        $this->assertSame($owner->id, $updated->user_id);
+        $this->assertSame('33.5890000', $updated->latitude);
+        $this->assertSame('130.3950000', $updated->longitude);
+        $this->assertSame('suntory', $updated->maker);
+        $this->assertDatabaseHas('machine_products', [
+            'vending_machine_id' => $machine->id,
+            'product_id' => $product->id,
+            'price' => 150,
+            'temperature' => 'cold',
+        ]);
+    }
+
+    public function test_unauthenticated_user_cannot_open_machine_update_form(): void
+    {
+        $machine = $this->createMachine('photos/old-machine.jpg', '2026-10-01 12:00:00');
+
+        auth()->logout();
+
+        $this->get(route('posts.create', ['machine' => $machine->id]))
+            ->assertRedirect('/login');
+
+        $this->assertSame($machine->photo_path, $machine->fresh()->photo_path);
+    }
+
+    public function test_unauthenticated_user_cannot_run_machine_update_action(): void
+    {
+        $oldPhoto = 'photos/old-machine.jpg';
+        Storage::disk('photos')->put($oldPhoto, 'old photo');
+
+        $oldProduct = Product::create(['name' => '既存商品']);
+        $machine = $this->createMachine($oldPhoto, '2026-10-01 12:00:00');
+        $machine->products()->attach($oldProduct->id, [
+            'price' => 100,
+            'temperature' => 'cold',
+            'recorded_at' => '2026-10-01 12:00:00',
+        ]);
+        $this->mockReader([
+            ['name' => '更新後の商品', 'price' => 150, 'temperature' => 'cold'],
+        ]);
+
+        $component = Volt::test('posts.create', ['machine' => $machine->id])
+            ->set('photo', UploadedFile::fake()->image('new-machine.jpg'))
+            ->call('save');
+        $newPhoto = $component->get('savedPath');
+
+        auth()->logout();
+
+        $this->withHeader('X-Livewire', 'true')
+            ->postJson(app('livewire')->getUpdateUri(), [
+                'components' => [[
+                    'snapshot' => json_encode($component->snapshot),
+                    'updates' => [],
+                    'calls' => [[
+                        'method' => 'register',
+                        'params' => [],
+                        'path' => '',
+                    ]],
+                ]],
+            ])
+            ->assertUnauthorized();
+
+        Storage::disk('photos')->assertExists($oldPhoto);
+        Storage::disk('photos')->assertExists($newPhoto);
+        $unchanged = $machine->fresh();
+        $this->assertSame($oldPhoto, $unchanged->photo_path);
+        $this->assertTrue($unchanged->last_confirmed_at->equalTo('2026-10-01 12:00:00'));
+        $this->assertDatabaseHas('machine_products', [
+            'vending_machine_id' => $machine->id,
+            'product_id' => $oldProduct->id,
+            'price' => 100,
+            'temperature' => 'cold',
+        ]);
+        $this->assertDatabaseMissing('machine_products', [
+            'vending_machine_id' => $machine->id,
+            'price' => 150,
+            'temperature' => 'cold',
+        ]);
+    }
+
+    public function test_machine_update_form_returns_not_found_for_missing_machine(): void
+    {
+        $this->get(route('posts.create', ['machine' => 999999]))
+            ->assertNotFound();
     }
 
     public function test_duplicate_update_rolls_back_everything_and_deletes_only_the_new_photo(): void
@@ -181,6 +290,59 @@ class VendingMachineUpdatePhotoTest extends TestCase
         ]);
     }
 
+    public function test_database_failure_rolls_back_machine_products_and_photo_files(): void
+    {
+        $oldPhoto = 'photos/old-machine.jpg';
+        Storage::disk('photos')->put($oldPhoto, 'old photo');
+
+        $oldProduct = Product::create(['name' => '既存商品']);
+        $machine = $this->createMachine($oldPhoto, '2026-10-01 12:00:00');
+        $machine->products()->attach($oldProduct->id, [
+            'price' => 100,
+            'temperature' => 'cold',
+            'recorded_at' => '2026-10-01 12:00:00',
+        ]);
+        $this->travelTo('2026-10-24 12:00:00');
+        $this->mockReader([
+            ['name' => '更新失敗商品', 'price' => 150, 'temperature' => 'cold'],
+        ]);
+
+        DB::unprepared(
+            'CREATE TRIGGER fail_machine_product_insert '
+            .'BEFORE INSERT ON machine_products '
+            ."BEGIN SELECT RAISE(ABORT, 'forced database failure'); END"
+        );
+
+        $component = Volt::test('posts.create', ['machine' => $machine->id])
+            ->set('photo', UploadedFile::fake()->image('new-machine.jpg'))
+            ->call('save');
+        $newPhoto = $component->get('savedPath');
+
+        $component->call('register')
+            ->assertHasErrors('rows')
+            ->assertSet('step', 'form')
+            ->assertSet('savedPath', null);
+
+        Storage::disk('photos')->assertExists($oldPhoto);
+        Storage::disk('photos')->assertMissing($newPhoto);
+
+        $unchanged = $machine->fresh();
+        $this->assertSame($oldPhoto, $unchanged->photo_path);
+        $this->assertTrue($unchanged->last_confirmed_at->equalTo('2026-10-01 12:00:00'));
+        $this->assertSame(auth()->id(), $unchanged->user_id);
+        $this->assertSame('33.5890000', $unchanged->latitude);
+        $this->assertSame('130.3950000', $unchanged->longitude);
+        $this->assertSame('suntory', $unchanged->maker);
+        $this->assertDatabaseHas('machine_products', [
+            'vending_machine_id' => $machine->id,
+            'product_id' => $oldProduct->id,
+            'price' => 100,
+            'temperature' => 'cold',
+        ]);
+        $this->assertDatabaseMissing('products', ['name' => '更新失敗商品']);
+        $this->assertDatabaseCount('machine_products', 1);
+    }
+
     public function test_duplicate_service_update_rolls_back_photo_timestamp_products_and_created_products(): void
     {
         $oldProduct = Product::create(['name' => '既存商品']);
@@ -240,14 +402,17 @@ class VendingMachineUpdatePhotoTest extends TestCase
         ]);
     }
 
-    private function createMachine(string $photoPath, string $lastConfirmedAt): VendingMachine
-    {
+    private function createMachine(
+        string $photoPath,
+        string $lastConfirmedAt,
+        ?User $owner = null
+    ): VendingMachine {
         return VendingMachine::create([
             'latitude' => 33.589,
             'longitude' => 130.395,
             'maker' => 'suntory',
             'photo_path' => $photoPath,
-            'user_id' => auth()->id(),
+            'user_id' => $owner?->id ?? auth()->id(),
             'last_confirmed_at' => $lastConfirmedAt,
         ]);
     }
