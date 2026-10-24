@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Services\TurnstileVerifier;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -14,6 +15,8 @@ new #[Layout('components.layouts.auth')] class extends Component {
     public string $password = '';
     public string $password_confirmation = '';
 
+    public ?string $turnstileToken = null;
+
     /**
      * Handle an incoming registration request.
      */
@@ -26,6 +29,18 @@ new #[Layout('components.layouts.auth')] class extends Component {
         ], [
             'name.unique' => 'このニックネームはすでに使われています。',
         ]);
+
+        // ボット対策(#48)。トークンは1回しか使えないので毎回作り直させる
+        $verified = app(TurnstileVerifier::class)->verify($this->turnstileToken);
+        $this->turnstileToken = null;
+        $this->dispatch('turnstile-reset');
+
+        if (! $verified) {
+            $this->addError('turnstileToken', 'ロボットでないことを確認できませんでした。チェックをやり直してから登録してください。');
+
+            return;
+        }
+
         $validated['password'] = Hash::make($validated['password']);
 
         event(new Registered(($user = User::create($validated))));
@@ -80,6 +95,8 @@ new #[Layout('components.layouts.auth')] class extends Component {
                 placeholder="Confirm password"
             />
         </div>
+
+        <x-turnstile />
 
         <div class="flex items-center justify-end">
             <flux:button type="submit" variant="primary" class="w-full">
