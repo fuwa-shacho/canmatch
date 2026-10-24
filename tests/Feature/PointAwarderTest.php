@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\PointLog;
 use App\Models\User;
 use App\Models\VendingMachine;
 use App\Services\PointAwarder;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use LogicException;
 use Tests\TestCase;
@@ -74,6 +76,34 @@ class PointAwarderTest extends TestCase
         $awarder->awardForUpdate($user, $machine);
 
         $this->assertDatabaseCount('point_logs', 2);
+    }
+
+    public function test_registration_award_is_idempotent_for_the_same_machine(): void
+    {
+        $user = User::factory()->create();
+        $machine = $this->createMachine($user, 1);
+        $awarder = app(PointAwarder::class);
+
+        $first = $awarder->awardForRegistration($user, $machine);
+        $second = $awarder->awardForRegistration($user, $machine);
+
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame(1, PointLog::where('type', 'registration')->count());
+    }
+
+    public function test_registration_award_can_use_the_machine_registration_time(): void
+    {
+        $user = User::factory()->create();
+        $machine = $this->createMachine($user, 1);
+        $registeredAt = CarbonImmutable::parse('2026-10-01 03:04:05');
+
+        $pointLog = app(PointAwarder::class)->awardForRegistration(
+            $user,
+            $machine,
+            $registeredAt,
+        );
+
+        $this->assertTrue($pointLog->created_at->equalTo($registeredAt));
     }
 
     public function test_invalid_point_configuration_is_rejected(): void
