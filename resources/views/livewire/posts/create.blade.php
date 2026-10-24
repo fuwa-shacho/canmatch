@@ -462,6 +462,20 @@ new #[Layout('components.layouts.app')] class extends Component
                 }
             "
         >
+            <aside
+                role="note"
+                class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100"
+            >
+                <h2 class="font-semibold">撮影時の注意と写真の利用について</h2>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                    <li>人の顔や車のナンバーが写らないようにしてください。</li>
+                    <li>私有地には入らないでください。</li>
+                    <li>歩きながら操作しないでください。</li>
+                    <li>投稿写真はAIによる商品情報の読み取りに使用します。</li>
+                    <li>投稿写真は他の利用者には公開されません。</li>
+                </ul>
+            </aside>
+
             <div
                 x-data="{
                     error: null,
