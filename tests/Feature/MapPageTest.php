@@ -65,4 +65,63 @@ class MapPageTest extends TestCase
             ->assertSee("document.addEventListener('livewire:navigating', destroyMap)", false)
             ->assertSee("document.addEventListener('livewire:navigated', initializeMap)", false);
     }
+
+    public function test_vending_machine_markers_are_loaded_from_the_api_with_safe_popup_content(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/map')
+            ->assertOk()
+            ->assertSee("'/api/vending-machines'", false)
+            ->assertSee('L.marker([latitude, longitude])', false)
+            ->assertSee("maker.textContent = machine.maker || 'メーカー不明'", false)
+            ->assertSee('productCount.textContent = `商品数: ${machine.product_count}件`', false)
+            ->assertSee('detailLink.href = `/vending-machines/${encodeURIComponent(machine.id)}`', false)
+            ->assertSee('content.append(maker, productCount, detailLink)', false);
+    }
+
+    public function test_product_search_updates_the_result_list_and_map_markers(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/map')
+            ->assertOk()
+            ->assertSee('id="product-search-form"', false)
+            ->assertSee('name="product_name"', false)
+            ->assertSee("parameters.set('product_name', productName)", false)
+            ->assertSee('const query = parameters.toString()', false)
+            ->assertDontSee('parameters.size', false)
+            ->assertSee('markerLayer?.clearLayers()', false)
+            ->assertSee('renderSearchResults(machines, productName)', false)
+            ->assertSee('商品名の一部で検索');
+    }
+
+    public function test_search_results_are_sorted_by_price_and_show_lowest_price_and_freshness(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/map')
+            ->assertOk()
+            ->assertSee('left.product.price - right.product.price', false)
+            ->assertSee("badge.textContent = '最安'", false)
+            ->assertSee('product.days_ago >= 30', false)
+            ->assertSee('${product.days_ago}日前の情報', false)
+            ->assertSee("hot: '温'", false)
+            ->assertSee("cold: '冷'", false);
+    }
+
+    public function test_marker_request_is_cancelled_when_leaving_the_map(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/map')
+            ->assertOk()
+            ->assertSee('markerRequest?.abort()', false)
+            ->assertSee('map !== requestedMap', false)
+            ->assertSee('requestedMap.getContainer().isConnected', false);
+    }
 }
