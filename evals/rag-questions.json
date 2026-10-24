@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "評価用の開発データ。期待商品はProductSeederに存在するが、販売自販機が登録されている必要がある。",
+  "questions": [
+    {"id": "q01", "question": "甘くない炭酸飲料を買いたい", "answerable": true, "expected_product_names": ["ウィルキンソン タンサン", "ウィルキンソン タンサン レモン"]},
+    {"id": "q02", "question": "カフェインのない麦茶が欲しい", "answerable": true, "expected_product_names": ["GREEN DA・KA・RA やさしい麦茶", "健康ミネラルむぎ茶"]},
+    {"id": "q03", "question": "砂糖の入っていないブラックコーヒーは？", "answerable": true, "expected_product_names": ["ワンダ モーニングアメリカーノ ブラック", "ワンダ ブラック ザ アロマ"]},
+    {"id": "q04", "question": "無糖の緑茶を探して", "answerable": true, "expected_product_names": ["綾鷹", "サントリー緑茶 伊右衛門", "キリン 生茶", "キリン 生茶 カフェインフリー"]},
+    {"id": "q05", "question": "甘い炭酸飲料を買える場所は？", "answerable": true, "expected_product_names": ["三ツ矢サイダー", "三ツ矢特濃グレープスカッシュ", "コカ・コーラ", "コカ・コーラ ゼロ"]},
+    {"id": "q06", "question": "スポーツドリンクを飲みたい", "answerable": true, "expected_product_names": ["アクエリアス", "GREEN DA・KA・RA"]},
+    {"id": "q07", "question": "レモンの香りがする無糖炭酸水は？", "answerable": true, "expected_product_names": ["ウィルキンソン タンサン レモン"]},
+    {"id": "q08", "question": "明日の福岡の天気は？", "answerable": false, "expected_product_names": []},
+    {"id": "q09", "question": "今日の日経平均株価はいくら？", "answerable": false, "expected_product_names": []},
+    {"id": "q10", "question": "今夜の月の満ち欠けを教えて", "answerable": false, "expected_product_names": []}
+  ]
+}
