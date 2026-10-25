@@ -20,9 +20,11 @@ class RareProductDetector
     public function machineCount(int $productId): int
     {
         return DB::table('machine_products')
+            ->join('vending_machines', 'vending_machines.id', '=', 'machine_products.vending_machine_id')
             ->where('product_id', $productId)
+            ->whereNull('vending_machines.hidden_at')
             ->distinct()
-            ->count('vending_machine_id');
+            ->count('machine_products.vending_machine_id');
     }
 
     /**
@@ -33,6 +35,7 @@ class RareProductDetector
         $row = DB::table('machine_products')
             ->join('vending_machines', 'vending_machines.id', '=', 'machine_products.vending_machine_id')
             ->where('machine_products.product_id', $productId)
+            ->whereNull('vending_machines.hidden_at')
             ->orderBy('machine_products.recorded_at')
             ->orderBy('machine_products.id')
             ->first(['vending_machines.id as machine_id', 'vending_machines.user_id']);
@@ -54,9 +57,11 @@ class RareProductDetector
     public function soldRareProductIds(): Builder
     {
         return DB::table('machine_products')
-            ->select('product_id')
-            ->groupBy('product_id')
-            ->havingRaw('COUNT(DISTINCT vending_machine_id) <= ?', [
+            ->join('vending_machines', 'vending_machines.id', '=', 'machine_products.vending_machine_id')
+            ->select('machine_products.product_id')
+            ->whereNull('vending_machines.hidden_at')
+            ->groupBy('machine_products.product_id')
+            ->havingRaw('COUNT(DISTINCT machine_products.vending_machine_id) <= ?', [
                 $this->maximumMachineCount(),
             ]);
     }

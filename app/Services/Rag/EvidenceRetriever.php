@@ -138,6 +138,7 @@ class EvidenceRetriever
         $rows = DB::table('machine_products')
             ->join('products', 'products.id', '=', 'machine_products.product_id')
             ->join('vending_machines', 'vending_machines.id', '=', 'machine_products.vending_machine_id')
+            ->whereNull('vending_machines.hidden_at')
             ->whereIn('machine_products.product_id', $productIds)
             ->orderBy('machine_products.price')
             ->orderByDesc('machine_products.recorded_at')

@@ -52,6 +52,7 @@ DB制約で外部キー・必須・値の範囲を守り、フォームでも同
 | photo_path | VARCHAR(1024) NOT NULL | 保存先ディスク内の相対パス。期限付きURLを保存しない |
 | user_id | unsigned BIGINT NULL FK users.id | 登録者。ユーザー削除時SET NULL |
 | last_confirmed_at | DATETIME NOT NULL | 確認して確定登録した日時 |
+| hidden_at | DATETIME NULL | 撤去報告で非表示にした日時。表示中はNULL |
 | created_at / updated_at | Laravel標準timestamps | 作成・更新日時 |
 
 新規登録時のuser_idは認証済みユーザーのIDをサーバーで設定し、リクエスト値を信用しない。NULL許可は退会後も自販機情報を残すためで、匿名投稿の許可ではない。退会後の表示は「退会済みユーザー」とする。更新者で登録者を書き換えない。
@@ -60,7 +61,18 @@ DB制約で外部キー・必須・値の範囲を守り、フォームでも同
 
 投稿写真はAIによる商品情報の読み取りに使用し、他の利用者には公開しない。
 
-非表示フラグと報告履歴は#10で追加する。撤去報告で物理削除しない。
+撤去報告(#10)が入った自販機は`hidden_at`へUTCの日時を設定し、物理削除しない。非表示の自販機は地図用JSON、商品検索、レア商品の台数・一覧、RAGの根拠から除外する。詳細画面とポイント履歴は残す。撮り直し更新(#46)が完了したときに`hidden_at`をNULLへ戻して再表示する。
+
+## #10 vending_machine_removal_reports
+
+| カラム | DB定義 | 規則 |
+|---|---|---|
+| id | unsigned BIGINT primary | 撤去報告ID |
+| vending_machine_id | unsigned BIGINT NOT NULL FK | 自販機物理削除時CASCADE |
+| user_id | unsigned BIGINT NOT NULL FK users.id | 報告者。ユーザー削除時CASCADE |
+| created_at | DATETIME NOT NULL | 報告日時。UTC |
+
+認証済みユーザーだけが詳細画面から報告できる。同じ利用者による同じ自販機への報告は1件だけ保存する。最初の報告で直ちに非表示とし、以後の報告でも`hidden_at`を上書きしない。
 
 ## #22 products
 

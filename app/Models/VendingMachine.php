@@ -16,6 +16,7 @@ class VendingMachine extends Model
         'photo_path',
         'user_id',
         'last_confirmed_at',
+        'hidden_at',
     ];
 
     protected function casts(): array
@@ -24,6 +25,7 @@ class VendingMachine extends Model
             'latitude' => 'decimal:7',
             'longitude' => 'decimal:7',
             'last_confirmed_at' => 'datetime',
+            'hidden_at' => 'datetime',
         ];
     }
 
@@ -47,5 +49,10 @@ class VendingMachine extends Model
     public function pointLogs(): HasMany
     {
         return $this->hasMany(PointLog::class);
+    }
+
+    public function removalReports(): HasMany
+    {
+        return $this->hasMany(VendingMachineRemovalReport::class);
     }
 }

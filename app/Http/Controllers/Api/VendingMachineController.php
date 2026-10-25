@@ -18,6 +18,7 @@ class VendingMachineController extends Controller
         $productName = trim($validated['product_name'] ?? '');
 
         $machines = VendingMachine::query()
+            ->whereNull('hidden_at')
             ->select(['id', 'latitude', 'longitude', 'maker', 'last_confirmed_at'])
             ->selectSub(
                 DB::table('machine_products')

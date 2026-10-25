@@ -15,6 +15,30 @@
             <h1 class="mt-2 text-2xl font-bold">自販機の詳細</h1>
         </div>
 
+        @if (session('status'))
+            <p role="status" class="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-100">
+                {{ session('status') }}
+            </p>
+        @endif
+
+        @if ($vendingMachine->hidden_at !== null)
+            <section class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                <h2 class="font-semibold">この自販機は撤去済みとして非表示です</h2>
+                <p class="mt-1 text-sm">地図、検索、レア商品、質問の回答には表示されません。データは確認のため残しています。</p>
+            </section>
+        @else
+            <section class="rounded-xl border border-neutral-200 p-4 dark:border-neutral-700">
+                <h2 class="font-semibold">この自販機がなくなっていた場合</h2>
+                <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-300">報告すると地図や検索から非表示になります。報告者は確認のため記録されます。</p>
+                <form method="POST" action="{{ route('vending-machines.removal-reports.store', $vendingMachine) }}" class="mt-3">
+                    @csrf
+                    <button type="submit" class="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-950/30">
+                        なくなっていたと報告する
+                    </button>
+                </form>
+            </section>
+        @endif
+
         @if ($earnedPointItems !== [])
             <section
                 role="status"
