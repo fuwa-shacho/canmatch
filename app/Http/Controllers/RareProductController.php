@@ -17,12 +17,14 @@ class RareProductController extends Controller
             ->select('products.*')
             ->selectSub(
                 DB::table('machine_products')
+                    ->join('vending_machines', 'vending_machines.id', '=', 'machine_products.vending_machine_id')
                     ->selectRaw('COUNT(DISTINCT vending_machine_id)')
+                    ->whereNull('vending_machines.hidden_at')
                     ->whereColumn('machine_products.product_id', 'products.id'),
                 'vending_machines_count'
             )
             ->whereIn('products.id', $detector->soldRareProductIds())
-            ->with('vendingMachines')
+            ->with(['vendingMachines' => fn ($query) => $query->whereNull('vending_machines.hidden_at')])
             ->orderBy('products.name')
             ->get()
             ->each(function (Product $product): void {

@@ -5,6 +5,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\RankingController;
 use App\Http\Controllers\RareProductController;
 use App\Http\Controllers\VendingMachineController;
+use App\Http\Controllers\VendingMachineRemovalReportController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
@@ -23,6 +24,10 @@ Route::view('map', 'map')
 Route::get('vending-machines/{vendingMachine}', VendingMachineController::class)
     ->middleware(['auth'])
     ->name('vending-machines.show');
+
+Route::post('vending-machines/{vendingMachine}/removal-reports', [VendingMachineRemovalReportController::class, 'store'])
+    ->middleware(['auth'])
+    ->name('vending-machines.removal-reports.store');
 
 Route::middleware(['auth'])->group(function () {
     Route::get('api/vending-machines', ApiVendingMachineController::class);
