@@ -115,10 +115,11 @@ class PointAwarderTest extends TestCase
     {
         $user = User::factory()->create();
         $machine = $this->createMachine($user, 1);
+        $secondMachine = $this->createMachine($user, 2);
         $awarder = app(PointAwarder::class);
 
         $awarder->awardForRegistration($user, $machine);
-        $awarder->awardForUpdate($user, $machine);
+        $awarder->awardForUpdate($user, $secondMachine);
 
         $this->assertDatabaseCount('point_logs', 2);
     }
