@@ -7,12 +7,15 @@ use App\Models\Product;
 use App\Models\User;
 use App\Models\VendingMachine;
 use App\Services\VendingMachineReader;
+use App\Services\VendingMachineRegistrar;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Volt\Volt;
+use PDOException;
 use Tests\TestCase;
 
 class PostConfirmTest extends TestCase
@@ -200,6 +203,61 @@ class PostConfirmTest extends TestCase
                 'points' => 10,
             ]],
         ], session('earned_points'));
+    }
+
+    public function test_registration_service_validation_error_keeps_saved_photo_and_review(): void
+    {
+        $this->preparePhotoStorage();
+        Product::create(['name' => '開発用お茶']);
+        $this->mockReader($this->vendingMachineResult([
+            ['name' => '開発用お茶', 'price' => 150, 'temperature' => 'cold'],
+            ['name' => '開発用お茶', 'price' => 160, 'temperature' => 'cold'],
+        ]));
+
+        $component = $this->submitPhoto();
+        $savedPath = $component->get('savedPath');
+
+        $component->call('register')
+            ->assertHasErrors('rows')
+            ->assertSet('step', 'review')
+            ->assertSet('savedPath', $savedPath)
+            ->assertSet('registered', false);
+
+        $this->assertNotNull($component->get('photo'));
+        Storage::disk('photos')->assertExists($savedPath);
+        $this->assertDatabaseCount('vending_machines', 0);
+    }
+
+    public function test_registration_database_error_keeps_saved_photo_and_review(): void
+    {
+        $this->preparePhotoStorage();
+        $this->mockReader($this->vendingMachineResult([
+            ['name' => '開発用お茶', 'price' => 150, 'temperature' => 'cold'],
+        ]));
+
+        $registrar = \Mockery::mock(VendingMachineRegistrar::class);
+        $registrar->shouldReceive('register')
+            ->once()
+            ->andThrow(new QueryException(
+                'sqlite',
+                'insert into vending_machines',
+                [],
+                new PDOException('development database error')
+            ));
+        $this->app->instance(VendingMachineRegistrar::class, $registrar);
+
+        $component = $this->submitPhoto();
+        $savedPath = $component->get('savedPath');
+
+        $component->call('register')
+            ->assertHasErrors('rows')
+            ->assertSet('step', 'review')
+            ->assertSet('savedPath', $savedPath)
+            ->assertSet('registered', false);
+
+        $this->assertNotNull($component->get('photo'));
+        Storage::disk('photos')->assertExists($savedPath);
+        $this->assertDatabaseCount('vending_machines', 0);
     }
 
     public function test_selected_product_candidate_is_registered_with_the_machine(): void

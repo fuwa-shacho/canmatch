@@ -1,11 +1,13 @@
 <?php
 
 use App\Exceptions\AiReadFailedException;
+use App\Models\VendingMachine;
 use App\Services\ProductMatcher;
 use App\Services\VendingMachineReader;
 use App\Services\VendingMachineRegistrar;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use League\Flysystem\UnableToCheckFileExistence;
 use League\Flysystem\UnableToDeleteFile;
 use League\Flysystem\UnableToSetVisibility;
@@ -37,6 +39,9 @@ new #[Layout('components.layouts.app')] class extends Component
     #[Locked]
     public ?string $savedPath = null;
 
+    #[Locked]
+    public ?int $machineId = null;
+
     public ?string $notice = null;
 
     public ?string $previewUrl = null;
@@ -49,11 +54,28 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public bool $registered = false;
 
+    public function mount(?int $machine = null): void
+    {
+        $id = $machine ?? request()->integer('machine');
+
+        if ($id > 0) {
+            $existing = VendingMachine::query()->findOrFail($id);
+            $this->machineId = $existing->id;
+            $this->latitude = (float) $existing->latitude;
+            $this->longitude = (float) $existing->longitude;
+            $this->maker = $existing->maker ?? 'unknown';
+        }
+    }
+
     /**
      * 位置を受け取る(GPS、または地図で選んだ位置)。範囲外なら保存せず false を返す
      */
     public function setLocation(float $latitude, float $longitude): bool
     {
+        if ($this->machineId !== null) {
+            return true;
+        }
+
         if (! is_finite($latitude) || ! is_finite($longitude)
             || $latitude < -90 || $latitude > 90 || $longitude < -180 || $longitude > 180) {
             $this->addError('latitude', '選択した位置が正しくありません。');
@@ -86,12 +108,17 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->registered = false;
         $this->validate();
 
+        if ($this->savedPath !== null && ! $this->deleteSavedPhoto()) {
+            return;
+        }
+
         $disk = config('filesystems.photos_disk');
 
         try {
             $savedPath = $this->photo->store('photos/'.now()->format('Y/m'), $disk);
-            $stored = $savedPath !== false && Storage::disk($disk)->exists($savedPath);
-        } catch (UnableToCheckFileExistence|UnableToSetVisibility|UnableToWriteFile) {
+            $stored = is_string($savedPath) && Storage::disk($disk)->exists($savedPath);
+        } catch (UnableToCheckFileExistence|UnableToSetVisibility|UnableToWriteFile $e) {
+            report($e);
             $this->addError('photo', '写真を保存できませんでした。もう一度お試しください。');
 
             return;
@@ -104,7 +131,15 @@ new #[Layout('components.layouts.app')] class extends Component
         }
 
         $this->savedPath = $savedPath;
-        $this->previewUrl = Storage::disk($disk)->temporaryUrl($this->savedPath, now()->addMinutes(10));
+        try {
+            $this->previewUrl = Storage::disk($disk)->temporaryUrl($this->savedPath, now()->addMinutes(10));
+        } catch (\RuntimeException $e) {
+            report($e);
+            $this->deleteSavedPhoto();
+            $this->addError('photo', '写真のプレビューを準備できませんでした。もう一度お試しください。');
+
+            return;
+        }
 
         $draft = ['is_vending_machine' => true, 'maker' => null, 'products' => []];
 
@@ -331,7 +366,8 @@ new #[Layout('components.layouts.app')] class extends Component
 
         try {
             $deleted = Storage::disk(config('filesystems.photos_disk'))->delete($this->savedPath);
-        } catch (UnableToDeleteFile) {
+        } catch (UnableToDeleteFile $e) {
+            report($e);
             $deleted = false;
         }
 
@@ -353,77 +389,131 @@ new #[Layout('components.layouts.app')] class extends Component
             return; // 二重送信の防止
         }
 
-        $this->validate([
-            'maker' => 'required|string|in:unknown,dydo,suntory,cocacola,asahi,kirin,itoen,other',
-            'latitude' => 'required|numeric|between:-90,90',
-            'longitude' => 'required|numeric|between:-180,180',
-            'rows' => 'required|array|min:1',
-            'rows.*.name' => 'required|string|max:100',
-            'rows.*.price' => 'required|integer|min:0|max:100000',
-            'rows.*.temperature' => 'required|in:hot,cold',
-            'rows.*.new_volume_ml' => 'nullable|integer|min:1|max:5000',
-            'rows.*.product_id' => [
-                'nullable',
-                'integer',
-                'exists:products,id',
-                function ($attribute, $value, $fail): void {
-                    if ($value === null) {
-                        return;
-                    }
-
-                    $index = (int) explode('.', $attribute)[1];
-                    $match = $this->matchFor((string) ($this->rows[$index]['name'] ?? ''));
-                    $validProductIds = array_column($match['candidates'], 'id');
-
-                    if ($match['product_id'] !== null) {
-                        $validProductIds[] = $match['product_id'];
-                    }
-
-                    if (! in_array((int) $value, $validProductIds, true)) {
-                        $fail('選択した商品を確認できません。候補から選び直してください。');
-                    }
-                },
-            ],
-        ], [
-            'latitude.required' => '現在地を取得してください',
-            'latitude.between' => '緯度が正しくありません',
-            'longitude.required' => '現在地を取得してください',
-            'longitude.between' => '経度が正しくありません',
-            'rows.required' => '商品を1つ以上入力してください',
-            'rows.min' => '商品を1つ以上入力してください',
-            'rows.*.name.required' => '商品名を入力してください',
-            'rows.*.name.max' => '商品名は100文字以内にしてください',
-            'rows.*.price.required' => '価格を入力してください',
-            'rows.*.price.integer' => '価格は数字で入力してください',
-            'rows.*.price.min' => '価格は0円以上にしてください',
-            'rows.*.price.max' => '価格が大きすぎます',
-            'rows.*.temperature.required' => '温冷を選んでください',
-            'rows.*.new_volume_ml.integer' => '容量は数字(ml)で入力してください',
-            'rows.*.new_volume_ml.min' => '容量は1ml以上にしてください',
-            'rows.*.new_volume_ml.max' => '容量が大きすぎます',
-        ]);
-
-        abort_if(
-            $this->savedPath === null || $this->latitude === null || $this->longitude === null,
-            422
-        );
-
         try {
-            $machine = app(VendingMachineRegistrar::class)->register([
-                'latitude' => $this->latitude,
-                'longitude' => $this->longitude,
-                'maker' => $this->maker === 'unknown' ? null : $this->maker,
-                'photo_path' => $this->savedPath,
-                'user_id' => auth()->id(),
-            ], $this->rows);
+            $this->validate([
+                'maker' => $this->machineId === null
+                    ? 'required|string|in:unknown,dydo,suntory,cocacola,asahi,kirin,itoen,other'
+                    : 'nullable|string|in:unknown,dydo,suntory,cocacola,asahi,kirin,itoen,other',
+                'latitude' => $this->machineId === null
+                    ? 'required|numeric|between:-90,90'
+                    : 'nullable|numeric|between:-90,90',
+                'longitude' => $this->machineId === null
+                    ? 'required|numeric|between:-180,180'
+                    : 'nullable|numeric|between:-180,180',
+                'rows' => 'required|array|min:1',
+                'rows.*.name' => 'required|string|max:100',
+                'rows.*.price' => 'required|integer|min:0|max:100000',
+                'rows.*.temperature' => 'required|in:hot,cold',
+                'rows.*.new_volume_ml' => 'nullable|integer|min:1|max:5000',
+                'rows.*.product_id' => [
+                    'nullable',
+                    'integer',
+                    'exists:products,id',
+                    function ($attribute, $value, $fail): void {
+                        if ($value === null) {
+                            return;
+                        }
+
+                        $index = (int) explode('.', $attribute)[1];
+                        $match = $this->matchFor((string) ($this->rows[$index]['name'] ?? ''));
+                        $validProductIds = array_column($match['candidates'], 'id');
+
+                        if ($match['product_id'] !== null) {
+                            $validProductIds[] = $match['product_id'];
+                        }
+
+                        if (! in_array((int) $value, $validProductIds, true)) {
+                            $fail('選択した商品を確認できません。候補から選び直してください。');
+                        }
+                    },
+                ],
+            ], [
+                'latitude.required' => '現在地を取得してください',
+                'latitude.between' => '緯度が正しくありません',
+                'longitude.required' => '現在地を取得してください',
+                'longitude.between' => '経度が正しくありません',
+                'rows.required' => '商品を1つ以上入力してください',
+                'rows.min' => '商品を1つ以上入力してください',
+                'rows.*.name.required' => '商品名を入力してください',
+                'rows.*.name.max' => '商品名は100文字以内にしてください',
+                'rows.*.price.required' => '価格を入力してください',
+                'rows.*.price.integer' => '価格は数字で入力してください',
+                'rows.*.price.min' => '価格は0円以上にしてください',
+                'rows.*.price.max' => '価格が大きすぎます',
+                'rows.*.temperature.required' => '温冷を選んでください',
+                'rows.*.new_volume_ml.integer' => '容量は数字(ml)で入力してください',
+                'rows.*.new_volume_ml.min' => '容量は1ml以上にしてください',
+                'rows.*.new_volume_ml.max' => '容量が大きすぎます',
+            ]);
+        } catch (ValidationException $e) {
+            if ($this->machineId === null) {
+                throw $e;
+            }
+
+            foreach ($e->errors() as $field => $messages) {
+                foreach ($messages as $message) {
+                    $this->addError($field, $message);
+                }
+            }
+
+            return;
+        }
+
+        if ($this->savedPath === null) {
+            $this->step = 'form';
+            $this->readError = '更新するには写真を撮り直してください。';
+
+            return;
+        }
+
+        $oldPhotoPath = null;
+        try {
+            $registrar = app(VendingMachineRegistrar::class);
+
+            if ($this->machineId !== null) {
+                abort_unless(auth()->check(), 401);
+
+                $machine = VendingMachine::query()->findOrFail($this->machineId);
+                $oldPhotoPath = $machine->photo_path;
+                $machine = $registrar->update($machine, $this->rows, $this->savedPath, auth()->user());
+            } else {
+                abort_if($this->latitude === null || $this->longitude === null, 422);
+
+                $machine = $registrar->register([
+                    'latitude' => $this->latitude,
+                    'longitude' => $this->longitude,
+                    'maker' => $this->maker === 'unknown' ? null : $this->maker,
+                    'photo_path' => $this->savedPath,
+                    'user_id' => auth()->id(),
+                ], $this->rows);
+            }
+        } catch (ValidationException $e) {
+            $message = $e->errors()['rows'][0] ?? '保存内容を確認してください。';
+            $this->addError('rows', $message);
+
+            return;
         } catch (\Illuminate\Database\QueryException $e) {
             report($e);
             $this->addError('rows', '保存に失敗しました。もう一度試してください。');
+
+            if ($this->machineId !== null) {
+                $this->failedUpdate('保存に失敗しました。写真を撮り直してください。');
+            }
 
             return;
         }
 
         $this->registered = true;
+
+        if ($oldPhotoPath !== null && $oldPhotoPath !== $this->savedPath && ! $this->deletePhoto($oldPhotoPath)) {
+            session()->flash('warning', '更新しましたが、以前の写真を削除できませんでした。');
+        }
+
+        if ($this->machineId !== null) {
+            $this->redirectRoute('vending-machines.show', $machine, navigate: true);
+
+            return;
+        }
 
         $earnedPoints = $machine->pointLogs()
             ->where('user_id', auth()->id())
@@ -440,18 +530,40 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $this->redirectRoute('vending-machines.show', $machine, navigate: true);
     }
+
+    private function deletePhoto(string $path): bool
+    {
+        try {
+            return Storage::disk(config('filesystems.photos_disk'))->delete($path);
+        } catch (UnableToDeleteFile $e) {
+            report($e);
+
+            return false;
+        }
+    }
+
+    private function failedUpdate(?string $reason): void
+    {
+        $deleted = $this->deleteSavedPhoto();
+        $this->photo = null;
+        $this->step = 'form';
+        $cleanupMessage = $deleted
+            ? '新しい写真を削除しました。写真を撮り直してください。'
+            : '新しい写真を削除できませんでした。時間をおいて再度お試しください。';
+        $this->readError = trim(($reason ?? '更新に失敗しました。').' '.$cleanupMessage);
+    }
 }; ?>
 
 <section class="mx-auto w-full max-w-3xl p-4">
     @if ($step === 'form')
-        <flux:heading size="lg">写真を投稿する</flux:heading>
+        <flux:heading size="lg">{{ $machineId ? '情報を更新する' : '写真を投稿する' }}</flux:heading>
 
         <form
             wire:submit="save"
             class="mt-6 flex max-w-md flex-col gap-6"
             x-data="{
-                locationStatus: 'loading',
-                locationMessage: '現在地を取得しています...',
+                locationStatus: @js($machineId ? 'ok' : 'loading'),
+                locationMessage: @js($machineId ? '登録済みの位置情報を維持します' : '現在地を取得しています...'),
                 uploading: false,
                 fallbackMap: null,
                 fallbackMarker: null,
@@ -512,6 +624,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 },
             }"
             x-init="
+                @unless ($machineId)
                 if (!navigator.geolocation) {
                     showFallback('この端末では現在地が使えません。');
                 } else {
@@ -534,6 +647,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         { enableHighAccuracy: true, timeout: 15000 }
                     );
                 }
+                @endunless
             "
         >
             <aside
@@ -622,17 +736,20 @@ new #[Layout('components.layouts.app')] class extends Component
                 @error('photo') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
             </div>
 
-            <flux:select wire:model="maker" label="メーカー">
-                <flux:select.option value="unknown">不明</flux:select.option>
-                <flux:select.option value="dydo">ダイドードリンコ</flux:select.option>
-                <flux:select.option value="suntory">サントリー</flux:select.option>
-                <flux:select.option value="cocacola">コカ・コーラ</flux:select.option>
-                <flux:select.option value="asahi">アサヒ</flux:select.option>
-                <flux:select.option value="kirin">キリン</flux:select.option>
-                <flux:select.option value="itoen">伊藤園</flux:select.option>
-                <flux:select.option value="other">その他</flux:select.option>
-            </flux:select>
+            @unless ($machineId)
+                <flux:select wire:model="maker" label="メーカー">
+                    <flux:select.option value="unknown">不明</flux:select.option>
+                    <flux:select.option value="dydo">ダイドードリンコ</flux:select.option>
+                    <flux:select.option value="suntory">サントリー</flux:select.option>
+                    <flux:select.option value="cocacola">コカ・コーラ</flux:select.option>
+                    <flux:select.option value="asahi">アサヒ</flux:select.option>
+                    <flux:select.option value="kirin">キリン</flux:select.option>
+                    <flux:select.option value="itoen">伊藤園</flux:select.option>
+                    <flux:select.option value="other">その他</flux:select.option>
+                </flux:select>
+            @endunless
 
+            @unless ($machineId)
             <div>
                 <input type="hidden" name="latitude" wire:model="latitude">
                 <input type="hidden" name="longitude" wire:model="longitude">
@@ -657,12 +774,13 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
                 @error('latitude') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
             </div>
+            @endunless
 
             <flux:button type="submit" variant="primary" class="w-full"
                 :disabled="$latitude === null || $longitude === null"
-                x-bind:disabled="uploading || locationStatus !== 'ok' || $wire.latitude === null || $wire.longitude === null"
+                x-bind:disabled="uploading || locationStatus !== 'ok' || @js($machineId === null) && ($wire.latitude === null || $wire.longitude === null)"
                 wire:loading.attr="disabled" wire:target="save,photo">
-                <span wire:loading.remove wire:target="save,photo">送信する</span>
+                <span wire:loading.remove wire:target="save,photo">{{ $machineId ? '読み取りを開始' : '送信する' }}</span>
                 <span wire:loading wire:target="photo">写真を送信中...</span>
                 <span wire:loading wire:target="save">読み取り中...</span>
             </flux:button>
@@ -670,9 +788,10 @@ new #[Layout('components.layouts.app')] class extends Component
             @if ($readError)
                 <flux:text class="text-red-500">{{ $readError }}</flux:text>
             @endif
+            @error('rows') <flux:text class="text-red-500">{{ $message }}</flux:text> @enderror
         </form>
     @else
-        <flux:heading size="lg">読み取り結果を確認する</flux:heading>
+        <flux:heading size="lg">{{ $machineId ? '更新内容を確認する' : '読み取り結果を確認する' }}</flux:heading>
         <flux:text class="mt-1">写真と見比べて、違うところを直してください。</flux:text>
 
         <div class="mt-6 grid gap-6 md:grid-cols-2">
@@ -758,7 +877,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 <flux:button wire:click="addRow">行を追加する</flux:button>
 
                 <flux:button variant="primary" wire:click="register" wire:loading.attr="disabled" wire:target="register">
-                    登録
+                    {{ $machineId ? '更新する' : '登録' }}
                 </flux:button>
                 <flux:button variant="ghost" wire:click="backToForm">撮り直す</flux:button>
 
