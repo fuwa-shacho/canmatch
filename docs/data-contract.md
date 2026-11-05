@@ -1,7 +1,7 @@
 # CanMatch 共通データ仕様 v1.0
 
 作成日: 2026-10-17（日本時間）
-更新日: 2026-11-04（日本時間）
+更新日: 2026-11-06（日本時間）
 
 ## 位置付けと根拠
 
@@ -52,6 +52,7 @@ DB制約で外部キー・必須・値の範囲を守り、フォームでも同
 | photo_path | VARCHAR(1024) NOT NULL | 保存先ディスク内の相対パス。期限付きURLを保存しない |
 | user_id | unsigned BIGINT NULL FK users.id | 登録者。ユーザー削除時SET NULL |
 | last_confirmed_at | DATETIME NOT NULL | 確認して確定登録した日時 |
+| hidden_at | DATETIME NULL | 撤去報告で非表示にした日時。表示中はNULL（#10、PR #151でレビュー中） |
 | created_at / updated_at | Laravel標準timestamps | 作成・更新日時 |
 
 新規登録時のuser_idは認証済みユーザーのIDをサーバーで設定し、リクエスト値を信用しない。NULL許可は退会後も自販機情報を残すためで、匿名投稿の許可ではない。退会後の表示は「退会済みユーザー」とする。更新者で登録者を書き換えない。
@@ -68,7 +69,18 @@ makerは投稿画面の選択肢の識別子(`dydo` / `suntory` / `cocacola` / `
 
 投稿写真はAIによる商品情報の読み取りに使用し、他の利用者には公開しない(#69)。投稿画面で、撮影時の注意とあわせて利用者に表示する。
 
-非表示フラグと報告履歴は#10で追加する。撤去報告で物理削除しない。
+撤去報告(#10、PR #151でレビュー中)が入った自販機は`hidden_at`へUTCの日時を設定し、物理削除しない。非表示の自販機は地図用JSON、商品検索、レア商品の台数・一覧、RAGの根拠から除外する。詳細画面とポイント履歴は残す。撮り直し更新(#46)が完了したときに`hidden_at`をNULLへ戻して再表示する。この復帰処理は、PR #138のマージ後にPR #151へ接続する。
+
+## #10 vending_machine_removal_reports（レビュー中: PR #151）
+
+| カラム | DB定義 | 規則 |
+|---|---|---|
+| id | unsigned BIGINT primary | 撤去報告ID |
+| vending_machine_id | unsigned BIGINT NOT NULL FK | 自販機物理削除時CASCADE |
+| user_id | unsigned BIGINT NOT NULL FK users.id | 報告者。ユーザー削除時CASCADE |
+| created_at | DATETIME NOT NULL | 報告日時。UTC |
+
+認証済みユーザーだけが詳細画面から報告できる。同じ利用者による同じ自販機への報告は1件だけ保存する。最初の報告で直ちに非表示とし、以後の報告でも`hidden_at`を上書きしない。
 
 ## #22 products
 
@@ -180,6 +192,7 @@ updated_atは持たない。行は Cloudflare を呼ぶ前に status=pending で
 | VendingMachine | user() | belongsTo User、退会後NULL |
 | VendingMachine | products() | belongsToMany Product |
 | VendingMachine | pointLogs() | hasMany PointLog |
+| VendingMachine | removalReports() | hasMany VendingMachineRemovalReport（#10、PR #151でレビュー中） |
 | Product | vendingMachines() | belongsToMany VendingMachine |
 | PointLog | user() | belongsTo User |
 | PointLog | vendingMachine() | belongsTo VendingMachine、物理削除後NULL |
@@ -278,7 +291,7 @@ $product->pivot->recorded_at;
 | product_count | integer | `DISTINCT product_id`の件数。hot/coldの重複行を二重計上しない |
 | last_confirmed_at | string | UTCのISO 8601形式 |
 
-ID昇順で返す。
+ID昇順で返す。`hidden_at`がNULLでない自販機は返さない(#10、PR #151でレビュー中)。
 
 ### 商品名での絞り込み（#49 / #50）
 
@@ -371,7 +384,7 @@ ID昇順で返す。
 ## 保留・将来Issue
 
 - #08: 読み取りの出どころと修正履歴。過去価格の完全な監査方式は本書で確定しない。撮り直し更新で旧写真は削除するため(#21)、写真による過去の読み取りの再確認は対象外とする。
-- #10: 非表示状態・撤去報告、各検索からの除外、#46での復帰。
+- #10: 非表示状態・撤去報告と各検索からの除外はPR #151でレビュー中。#46での復帰処理はPR #138のマージ後にPR #151へ接続する。
 - #46・#55: 撮り直しによる更新(PR #138)と、更新ポイント・7日判定。
 - #54の後続: 発見者を商品の作成時に記録する(撮り直しで中間行が入れ替わっても辿れるように)、遡及したポイントを発見者に知らせる。
 - 既知の差分: makerの表示名変換、`days_ago`の日本時間化、商品名の表記ゆれの整理。
@@ -386,3 +399,4 @@ ID昇順で返す。
 - v0.2（2026-10-23）: #68 question_logs をレビュー中として追加。
 - v1.0（2026-10-25）: main `cc210bc`の実装に合わせて確定版とした。#17のAI JSON、#32の地図JSONと#49〜#51の絞り込み・価格順・単価、#44・#45の照合と登録、PR #135の容量任意化、#47の地図での位置指定、#52レア基準、#53〜#54・#59のポイント、#56〜#58のランキング、#68 question_logs、#69の写真の利用方針、画面方式の一覧を確定事項として反映。makerの識別子保存と`days_ago`のUTC計算を既知の差分として記載。
 - v1.0（2026-11-04）: #46の撮り直し更新で、旧写真を更新の確定後に削除する方針と、`ai_read_logs`の`photo_path`の扱いを#21に追加。
+- v1.0（2026-11-06）: #10のレビュー中実装(PR #151)に合わせ、`hidden_at`、撤去報告履歴、地図・検索・レア判定・RAGからの除外、#46での再表示規則を追加。PR #138を先にマージし、復帰処理をPR #151へ接続する順序を明記。
